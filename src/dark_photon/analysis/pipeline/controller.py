@@ -92,13 +92,14 @@ def create_preprocessing_pipeline() -> AnalysisPipeline:
         InitializationStage, 
         FileEnumerationStage,
         ParameterLoadingStage,
-        TransmissionAnalysisStage,  # NEW
-        # ReflectionAnalysisStage,   # Coming next
+        TransmissionAnalysisStage,
+        ReflectionAnalysisStage,
     )
     
     pipeline.add_stage(InitializationStage())
     pipeline.add_stage(FileEnumerationStage())
     pipeline.add_stage(ParameterLoadingStage())
-    pipeline.add_stage(TransmissionAnalysisStage())  # NEW
+    pipeline.add_stage(TransmissionAnalysisStage())
+    pipeline.add_stage(ReflectionAnalysisStage())
     
     return pipeline
