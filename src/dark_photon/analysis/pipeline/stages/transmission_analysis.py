@@ -52,7 +52,7 @@ class TransmissionAnalysisStage(PipelineStage):
         mse_values = np.zeros((num_files, 3))  # MSE for sweep1, sweep2, average
         freq_drifts_khz = np.zeros(num_files)  # Frequency drifts
         fitted_parameters = np.zeros((num_files, 10))  # Combined parameters
-        phase_info = np.zeros((num_files, 2))  # Phase mean and std
+        phase_info = np.zeros((num_files, 2))  # Phase mean and std [NEW]
         
         processed_count = 0
         
@@ -66,6 +66,7 @@ class TransmissionAnalysisStage(PipelineStage):
                     continue
                 
                 # Process both sweeps with caching
+                # [MODIFIED] Now returns phase information for first sweep
                 params1[i, :], mse1, _, phase_mean, phase_std = self._process_transmission_sweep_with_cache(
                     tx1_file, 'tx', context.run_props.processing, context
                 )
@@ -73,7 +74,7 @@ class TransmissionAnalysisStage(PipelineStage):
                     tx2_file, 'tx2', context.run_props.processing, context
                 )
                 
-                # Store phase information (only from first sweep)
+                # Store phase information (only from first sweep) [NEW]
                 phase_info[i, :] = [phase_mean, phase_std]
                 
                 # Calculate averages based on type
@@ -93,11 +94,11 @@ class TransmissionAnalysisStage(PipelineStage):
                 warnings.warn(f"Error processing transmission file {tx2_file}: {e}")
                 continue
         
-        # Prepare scaleinfo updates
+        # Prepare scaleinfo updates [MODIFIED - added phase_info]
         scaleinfo_updates = {
             'txparams': params_avg.tolist(),
             'txdriftkHz': freq_drifts_khz.tolist(),
-            'phase_info': phase_info.tolist()  # Add phase information
+            'phase_info': phase_info.tolist()  # [NEW] Add phase information to scaleinfo
         }
         
         result = TransmissionAnalysisResult(
@@ -144,18 +145,19 @@ class TransmissionAnalysisStage(PipelineStage):
             file_path, sweep_type, proc_par
         )
         
-        # Extract phase information (only for first sweep)
+        # Extract phase information (only for first sweep) [NEW]
         phase_mean, phase_std = 0.0, 0.0
-        if sweep_type == 'tx':
+        if sweep_type == 'tx':  # Only extract from first sweep, like MATLAB
             phase_mean, phase_std = self._extract_phase_info(file_path)
+            print(f"    Extracted phase info: mean={phase_mean:.3f}, std={phase_std:.3f}")
         
-        # Save to cache
+        # Save to cache [MODIFIED - include phase info in cache]
         cache_data = {
             'bestfit_params': bestfit_params,
             'mse': mse,
             'datarange': datarange,
-            'phase_mean': phase_mean,
-            'phase_std': phase_std,
+            'phase_mean': phase_mean,      # [NEW] Cache phase info
+            'phase_std': phase_std,        # [NEW] Cache phase info
             'tx_fit_width_sigma': proc_par_dict.get('tx_fit_width_sigma'),
             'timestamp': datetime.now().isoformat()
         }
@@ -167,6 +169,9 @@ class TransmissionAnalysisStage(PipelineStage):
                               proc_par: Any) -> tuple:
         """
         Process a single transmission sweep.
+        
+        Returns:
+            tuple: (bestfit_params, mse, datarange)
         """
         # Load data file
         data = scipy.io.loadmat(str(file_path))
@@ -209,27 +214,49 @@ class TransmissionAnalysisStage(PipelineStage):
     def _extract_phase_info(self, tx_file_path: Path) -> Tuple[float, float]:
         """
         Extract phase information from CW transmission data.
+        
+        Python equivalent of MATLAB's:
+        [theta,rho] = cart2pol(sweep1.I_CW_tx, sweep1.Q_CW_tx);
+        theta_unwrap = unwrap(theta);
+        phase_std = std(theta_unwrap);
+        phase_mean = mean(theta_unwrap);
+        
+        Returns:
+            tuple: (phase_mean, phase_std) in radians
         """
         try:
             data = scipy.io.loadmat(str(tx_file_path))
             
-            # Check if CW data exists
+            # Check if CW data exists - return zeros if not available
             if 'I_CW_tx' not in data or 'Q_CW_tx' not in data:
+                warnings.warn(f"No CW data found in {tx_file_path.name}")
                 return 0.0, 0.0
             
+            # Extract CW I/Q data
             i_cw = data['I_CW_tx'].flatten()
             q_cw = data['Q_CW_tx'].flatten()
             
-            # Convert to polar coordinates
-            theta = np.arctan2(q_cw, i_cw)  # phase
-            # rho = np.sqrt(i_cw**2 + q_cw**2)  # magnitude (not used)
+            # Validate data
+            if len(i_cw) == 0 or len(q_cw) == 0:
+                warnings.warn(f"Empty CW data in {tx_file_path.name}")
+                return 0.0, 0.0
             
-            # Unwrap phase to avoid 2π jumps
+            if len(i_cw) != len(q_cw):
+                warnings.warn(f"CW I/Q data length mismatch in {tx_file_path.name}")
+                return 0.0, 0.0
+            
+            # Step 1: Convert to polar coordinates (phase and magnitude)
+            # np.arctan2 handles all quadrants correctly (-π to π range)
+            theta = np.arctan2(q_cw, i_cw)  # Phase in radians
+            
+            # Step 2: Unwrap phase to avoid 2π jumps and make it continuous
             theta_unwrap = np.unwrap(theta)
             
-            phase_std = np.std(theta_unwrap)
-            phase_mean = np.mean(theta_unwrap)
+            # Step 3: Calculate statistics
+            phase_std = np.std(theta_unwrap)    # Phase stability metric
+            phase_mean = np.mean(theta_unwrap)  # Average phase
             
+            # Convert to Python native floats
             return float(phase_mean), float(phase_std)
             
         except Exception as e:
@@ -239,6 +266,13 @@ class TransmissionAnalysisStage(PipelineStage):
     def _apply_averaging(self, params1: np.ndarray, params2: np.ndarray) -> np.ndarray:
         """
         Apply averaging based on the configured type.
+        
+        Args:
+            params1: Parameters from first sweep
+            params2: Parameters from second sweep  
+            
+        Returns:
+            Averaged parameters
         """
         if self.avg_type == 'average':
             return (params1 + params2) / 2
@@ -261,6 +295,11 @@ class TransmissionAnalysisStage(PipelineStage):
         if not result.scaleinfo_updates:
             print("  ✗ No scaleinfo updates from transmission analysis")
             return False
+        
+        # Check if phase info was added [NEW VALIDATION]
+        if 'phase_info' not in result.scaleinfo_updates:
+            print("  ⚠ Phase information not found in results")
+            # Don't fail validation - phase info is optional
         
         num_files = len(result.frequency_drifts_khz)
         print(f"  ✓ Transmission analysis processed {num_files} files")
