@@ -78,10 +78,14 @@ class AnalysisPipeline:
         return f"AnalysisPipeline(name='{self.name}', stages={stage_names})"
 
 
-def create_preprocessing_pipeline() -> AnalysisPipeline:
+# Modify the create_preprocessing_pipeline function:
+def create_preprocessing_pipeline(avg_type: str = 'average') -> AnalysisPipeline:
     """
     Factory function to create the preprocessing pipeline.
     
+    Args:
+        avg_type: How to average sweeps ('average', 'before', 'after')
+        
     Returns:
         AnalysisPipeline configured for data preprocessing
     """
@@ -99,7 +103,7 @@ def create_preprocessing_pipeline() -> AnalysisPipeline:
     pipeline.add_stage(InitializationStage())
     pipeline.add_stage(FileEnumerationStage())
     pipeline.add_stage(ParameterLoadingStage())
-    pipeline.add_stage(TransmissionAnalysisStage())
-    pipeline.add_stage(ReflectionAnalysisStage())
+    pipeline.add_stage(TransmissionAnalysisStage(avg_type=avg_type))
+    pipeline.add_stage(ReflectionAnalysisStage(avg_type=avg_type))
     
     return pipeline
