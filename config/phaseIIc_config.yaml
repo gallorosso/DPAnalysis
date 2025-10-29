@@ -1,0 +1,37 @@
+# Main configuration for Phase IIc analysis
+
+# Data directories
+input_dir: "/Users/andrea.gallorosso/Documents/Attivi/HAYSTAC analysis"
+output_dir: "/Users/andrea.gallorosso/Documents/Attivi/DPAnalysis/output/"
+
+# Phase identification
+phase_name: "PIIc"
+
+# Data selection
+first_data_set: 20220908
+last_data_set: 20220908
+
+# Processing options
+rescan: false
+plottrue: false
+calib_plotting: false
+plot_subspec: false
+hard_file_cut: false
+use_worm: false
+skip_baseline: false
+rescan_no_calc_baseline: false
+low_IF_pad: false
+
+# File paths
+form_fac_file: "/Users/andrea.gallorosso/Documents/Attivi/HAYSTAC analysis/4to5GHz_corrected.xlsx"
+calib_coeff_file: "/Users/andrea.gallorosso/Documents/Attivi/HAYSTAC analysis/HaystacAnalysis 1.1/data/coeffs_alpharho_power_4_1_4_4.txt"
+calib_data_file: "/Users/andrea.gallorosso/Documents/Attivi/HAYSTAC analysis/HaystacAnalysis 1.1/data/alpharho_lam_vs_f.xlsx"
+
+# Algorithm choices
+add_in_par: false
+gain_const_bool: true
+float_abg_gains: false
+freqs_from_par: true
+old_SG_filter: false
+Sc_full_gain_correction: false
+sq_on_bool: true

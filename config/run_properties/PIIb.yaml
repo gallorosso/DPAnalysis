@@ -1,0 +1,8 @@
+# System parameters for Phase IIb
+t_fridge_K: 0.061
+t_VTS_K: 0.290
+alpha: 0.7937  # sqrt(0.63)
+rho: 0.7937    # same as alpha
+lam: 0.788
+V_cav: 0.001545
+B_0: 8.0
