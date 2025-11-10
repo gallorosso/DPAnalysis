@@ -3,7 +3,7 @@ Reflection analysis stage for the analysis pipeline.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 import scipy.io
 import numpy as np
 import warnings
@@ -13,12 +13,43 @@ from ..base import PipelineStage, PipelineContext
 from ..results import ReflectionAnalysisResult
 from src.dark_photon.fitting import optimized_fit
 
+from datetime import datetime
+from src.dark_photon.utils.caching import (
+    get_fit_cache_path,
+    load_cached_fit,
+    save_cached_fit,
+)
+
 class ReflectionAnalysisStage(PipelineStage):
     """
     Stage 3.2: Analyze cavity reflection data.
     
     Python implementation of readoutbeta (analysis only, no plotting).
     """
+
+    def __init__(self, avg_type: Literal['average', 'before', 'after'] = 'average'):
+        """
+        Initialize reflection analysis stage.
+
+        Args:
+            avg_type: How to average the two sweeps ('average', 'before', 'after')
+        """
+        self.avg_type = avg_type
+
+    def _get_proc_par_dict(self, proc_par: Any) -> Dict[str, Any]:
+        """Convert processing parameters to dictionary for fitting functions."""
+        fitting_config = proc_par.fitting
+
+        return {
+            'use_smart_init': fitting_config['use_smart_init'],
+            'tx_fit_width_sigma': fitting_config['tx_fit_width_sigma'],
+            'tx_fit_buffer_bins': fitting_config['tx_fit_buffer_bins'],
+            'rfl_fit_width_sigma': fitting_config['rfl_fit_width_sigma'],
+            'rfl_fit_buffer_bins': fitting_config['rfl_fit_buffer_bins'],
+            'init_params_tx': fitting_config['init_params_tx'],
+            'init_params_rfl': fitting_config['init_params_rfl'],
+            'load_fits': fitting_config.get('load_fits', True),
+        }
     
     def execute(self, context: PipelineContext, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -46,19 +77,19 @@ class ReflectionAnalysisStage(PipelineStage):
         
         for i, tx2_file in enumerate(files):
             try:
-                # Get corresponding rfl files
+                # Get corresponding reflection files
                 rfl1_file, rfl2_file = self._get_rfl_files(tx2_file)
-                
+
                 if not rfl1_file.exists() or not rfl2_file.exists():
-                    warnings.warn(f"RFL files not found for {tx2_file.name}")
+                    warnings.warn(f"Reflection files missing for {tx2_file.name}")
                     continue
-                
-                # Process both reflection sweeps
-                beta1, freq1, mse1, baseline1_db, params1 = self._process_reflection_sweep(
-                    rfl1_file, 'rfl', context.run_props.processing
+
+                # Use cached processing
+                beta1, freq1, mse1, baseline1_db, params1 = self._process_reflection_sweep_with_cache(
+                    rfl1_file, 'rfl', context.run_props.processing, context
                 )
-                beta2, freq2, mse2, baseline2_db, params2 = self._process_reflection_sweep(
-                    rfl2_file, 'rfl2', context.run_props.processing
+                beta2, freq2, mse2, baseline2_db, params2 = self._process_reflection_sweep_with_cache(
+                    rfl2_file, 'rfl2', context.run_props.processing, context
                 )
                 
                 # Calculate averages
@@ -91,15 +122,16 @@ class ReflectionAnalysisStage(PipelineStage):
             'rfl_base2_db': rfl_baseline_db[:, 1].tolist()
         }
         
-        # Add reflection parameters based on averaging type (using 'average' as default)
-        avg_type = 'average'  # This could be made configurable
-        if avg_type == 'average':
+        # Add reflection parameters based on configured averaging type
+        if self.avg_type == 'average':
             rfl_params_avg = (rfl_fit_params[:, :5] + rfl_fit_params[:, 5:]) / 2
             scaleinfo_updates['rflparams'] = rfl_params_avg.tolist()
-        elif avg_type == 'before':
+        elif self.avg_type == 'before':
             scaleinfo_updates['rflparams'] = rfl_fit_params[:, :5].tolist()
-        elif avg_type == 'after':
+        elif self.avg_type == 'after':
             scaleinfo_updates['rflparams'] = rfl_fit_params[:, 5:].tolist()
+        else:
+            raise ValueError(f"Unknown avg_type: {self.avg_type!r}")
         
         result = ReflectionAnalysisResult(
             scaleinfo_updates=scaleinfo_updates,
@@ -164,6 +196,77 @@ class ReflectionAnalysisStage(PipelineStage):
         
         resonance_freq = fit_params[1]  # f0 parameter
         
+        return beta, resonance_freq, mse, baseline_db, fit_params
+    
+    def _process_reflection_sweep_with_cache(
+        self,
+        file_path: Path,
+        sweep_type: str,
+        proc_par: Any,
+        context: PipelineContext,
+    ) -> tuple:
+        """
+        Process a single reflection sweep with caching.
+
+        Returns:
+            (beta, resonance_freq, mse, baseline_db, fit_params)
+        """
+        # Load the .mat file once (we need freq for beta calculation anyway)
+        data = scipy.io.loadmat(str(file_path))
+
+        # Extract I/Q data and frequencies
+        if sweep_type == 'rfl':
+            i_data = data['I_rfl'].flatten()
+            q_data = data['Q_rfl'].flatten()
+            freq = data['f_GHz_rfl'].flatten()
+        else:  # 'rfl2'
+            i_data = data['I_rfl2'].flatten()
+            q_data = data['Q_rfl2'].flatten()
+            freq = data['f_GHz_rfl2'].flatten()
+
+        # Build processing dict (includes load_fits + rfl_fit_width_sigma)
+        proc_par_dict = self._get_proc_par_dict(proc_par)
+
+        # Generate cache path (fits/rfl/<basename>_fit.pkl)
+        cache_path = get_fit_cache_path(file_path, 'rfl', context.output_dir)
+
+        fit_params = None
+        mse = None
+        datarange = None
+
+        # Try to load from cache if allowed
+        if proc_par_dict.get('load_fits', True):
+            cached = load_cached_fit(cache_path, proc_par_dict)
+            if cached is not None:
+                print(f"    Loaded cached RFL fit: {file_path.name}")
+                fit_params = cached['bestfit_params']
+                mse = cached['mse']
+                datarange = cached['datarange']
+
+        # If cache miss or invalid, run the fit
+        if fit_params is None or mse is None or datarange is None:
+            # Run optimized fit (heavy part)
+            fit_params, mse, datarange = optimized_fit(
+                'rfl', i_data, q_data, freq, proc_par_dict
+            )
+
+            # Save to cache (store rfl_fit_width_sigma for validation)
+            cache_data = {
+                'bestfit_params': fit_params,
+                'mse': mse,
+                'datarange': datarange,
+                'rfl_fit_width_sigma': proc_par_dict.get('rfl_fit_width_sigma'),
+                'timestamp': datetime.now().isoformat(),
+            }
+            save_cached_fit(cache_path, cache_data)
+
+        # Now compute beta & baseline using the (possibly cached) fit
+        beta, baseline_db = self._calculate_coupling_factor(
+            fit_params, freq, datarange
+        )
+
+        resonance_freq = fit_params[1]  # f0
+
         return beta, resonance_freq, mse, baseline_db, fit_params
     
     def _calculate_coupling_factor(self, fit_params: np.ndarray, freq: np.ndarray, 
