@@ -58,7 +58,7 @@ class ReflectionAnalysisStage(PipelineStage):
                     rfl1_file, 'rfl', context.run_props.processing
                 )
                 beta2, freq2, mse2, baseline2_db, params2 = self._process_reflection_sweep(
-                    rfl2_file, 'rfl', context.run_props.processing
+                    rfl2_file, 'rfl2', context.run_props.processing
                 )
                 
                 # Calculate averages
