@@ -205,17 +205,42 @@ class ReflectionAnalysisStage(PipelineStage):
     
     def validate_output(self, data: Dict[str, Any]) -> bool:
         """
-        Validate reflection analysis outputs.
+        Validate parameter loading stage outputs.
         """
-        result = data.get('reflection_analysis')
+        result = data.get('parameter_loading')
         if not result:
-            print("  ✗ No reflection analysis result found")
+            print("  ✗ No parameter loading result found")
             return False
         
-        if not result.scaleinfo_updates:
-            print("  ✗ No scaleinfo updates from reflection analysis")
+        if not result.scaleinfo:
+            print("  ✗ No scaleinfo data loaded")
             return False
         
-        num_files = len(result.coupling_factors)
-        print(f"  ✓ Reflection analysis processed {num_files} files")
+        scaleinfo = result.scaleinfo
+
+        # Check that we have the essential fields that later stages expect
+        essential_fields = ['Cavity_freq', 'loop_time', 'Cavity_freq_tx1', 'Cavity_freq_rfl1']
+        missing_fields = [field for field in essential_fields if field not in scaleinfo]
+        
+        if missing_fields:
+            print(f"  ✗ Missing essential fields in scaleinfo: {missing_fields}")
+            return False
+        
+        # Determine how many parameter sets we think we loaded
+        param_count = self._get_parameter_count(scaleinfo)
+
+        # If the file enumeration stage has already run, cross-check lengths
+        file_enum = data.get('file_enumeration')
+        if file_enum and getattr(file_enum, "files", None) is not None:
+            num_files = len(file_enum.files)
+            if num_files != param_count:
+                print(
+                    "  ✗ Mismatch between number of data files and parameter entries:\n"
+                    f"    - files:      {num_files}\n"
+                    f"    - parameters: {param_count}\n"
+                    "    These should be equal for files[i] to match scaleinfo[i]."
+                )
+                return False
+        
+        print(f"  ✓ Parameter loading successful - {param_count} parameter sets loaded")
         return True
