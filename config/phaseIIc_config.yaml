@@ -13,7 +13,7 @@ last_data_set: 20220908
 
 # Processing options
 rescan: false
-plottrue: false
+plottrue: true
 calib_plotting: false
 plot_subspec: false
 hard_file_cut: false
