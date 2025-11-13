@@ -65,6 +65,8 @@ class ReflectionAnalysisResult:
     mse_values: np.ndarray = None
     coupling_factors: np.ndarray = None
     reflection_frequencies: np.ndarray = None
+    rfl_fit_params: np.ndarray = None
+    rfl_baseline_db: np.ndarray = None
     status: str = "pending"
 
 @dataclass

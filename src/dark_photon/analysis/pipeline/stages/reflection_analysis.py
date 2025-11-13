@@ -138,6 +138,8 @@ class ReflectionAnalysisStage(PipelineStage):
             mse_values=mse_values,
             coupling_factors=beta_values,
             reflection_frequencies=freq_values,
+            rfl_fit_params=rfl_fit_params,
+            rfl_baseline_db=rfl_baseline_db,
             status="success"
         )
         

@@ -54,15 +54,25 @@ def main():
     # Final scaleinfo from ScaleinfoMergeStage
     scaleinfo = results["scaleinfo"]
 
+    # 2. Only generate plots if requested
     if options.plottrue:
-        apply_default_style()
-        plot_tx_summary(scaleinfo, context.plot_dir)
-        plot_rfl_summary(scaleinfo, context.plot_dir)
-    # Access merged scaleinfo
-    # scaleinfo_final = results['scaleinfo_merge'].scaleinfo
+        print("  Generating cavity summary plots.")
+        plot_dir = context.plot_dir or (options.output_dir / "plots")
 
-    # # Example: print how many tuning steps we have
-    # print(f"✓ Final scaleinfo has {len(scaleinfo_final['txparams'])} tuning steps")
+        # Retrieve results and scaleinfo
+        param_res = results["parameter_loading"]
+        tx_res = results["transmission_analysis"]
+        rfl_res = results["reflection_analysis"]
+
+        scaleinfo = param_res.scaleinfo.copy()
+        scaleinfo.update(tx_res.scaleinfo_updates)
+        scaleinfo.update(rfl_res.scaleinfo_updates)
+
+        # TX summary
+        plot_tx_summary(tx_res, scaleinfo, plot_dir, show=False)
+
+        # RFL summary
+        plot_rfl_summary(rfl_res, scaleinfo, plot_dir, show=False)
 
     
     print("=" * 60)
