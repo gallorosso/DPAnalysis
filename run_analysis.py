@@ -48,6 +48,12 @@ def main():
     
     pipeline = create_preprocessing_pipeline()
     results = pipeline.execute(context)
+    # Access merged scaleinfo
+    # scaleinfo_final = results['scaleinfo_merge'].scaleinfo
+
+    # # Example: print how many tuning steps we have
+    # print(f"✓ Final scaleinfo has {len(scaleinfo_final['txparams'])} tuning steps")
+
     
     print("=" * 60)
     print("Pipeline execution completed!")

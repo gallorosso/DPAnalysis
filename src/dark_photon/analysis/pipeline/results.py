@@ -66,3 +66,9 @@ class ReflectionAnalysisResult:
     coupling_factors: np.ndarray = None
     reflection_frequencies: np.ndarray = None
     status: str = "pending"
+
+@dataclass
+class ScaleinfoMergeResult:
+    """Final merged scaleinfo including fit results and optional overrides."""
+    scaleinfo: Dict[str, Any] = field(default_factory=dict)
+    status: str = "pending"
