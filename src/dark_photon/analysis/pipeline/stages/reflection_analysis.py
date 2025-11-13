@@ -200,6 +200,18 @@ class ReflectionAnalysisStage(PipelineStage):
         
         return beta, resonance_freq, mse, baseline_db, fit_params
     
+    def _get_parameter_count(self, scaleinfo_updates: Dict[str, Any]) -> int:
+        """
+        Infer the number of parameter sets in reflection scaleinfo_updates.
+
+        We prefer 'rflparams' if present, otherwise fall back to 'freq_beta'
+        or 'rfldriftkHz'. Returns 0 if nothing is found.
+        """
+        for key in ("rflparams", "freq_beta", "rfldriftkHz"):
+            if key in scaleinfo_updates:
+                return len(scaleinfo_updates[key])
+        return 0
+    
     def _process_reflection_sweep_with_cache(
         self,
         file_path: Path,
