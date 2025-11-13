@@ -12,6 +12,8 @@ from src.dark_photon.core import Constants
 from src.dark_photon.core.run_properties import RunProperties
 from src.dark_photon.io import load_run_dirs_from_options
 from src.dark_photon.analysis import create_preprocessing_pipeline, PipelineContext
+from src.dark_photon.plotting import plot_tx_summary, plot_rfl_summary
+from src.dark_photon.plotting.styles import apply_default_style
 
 def main():
     # 1. Load base configuration from YAML file
@@ -48,6 +50,14 @@ def main():
     
     pipeline = create_preprocessing_pipeline()
     results = pipeline.execute(context)
+
+    # Final scaleinfo from ScaleinfoMergeStage
+    scaleinfo = results["scaleinfo"]
+
+    if options.plottrue:
+        apply_default_style()
+        plot_tx_summary(scaleinfo, context.plot_dir)
+        plot_rfl_summary(scaleinfo, context.plot_dir)
     # Access merged scaleinfo
     # scaleinfo_final = results['scaleinfo_merge'].scaleinfo
 
