@@ -64,7 +64,7 @@ class ParameterLoadingStage(PipelineStage):
                 except Exception as e:
                     warnings.warn(f"Error processing par file {par_file_base}: {e}")
                     continue
-        
+    
         # Apply post-processing conversions and calculations
         if scaleinfo:
             scaleinfo = self._apply_post_processing(scaleinfo, context)
