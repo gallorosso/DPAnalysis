@@ -145,12 +145,13 @@ class ReflectionAnalysisStage(PipelineStage):
         
         data['reflection_analysis'] = result
         return data
-    
+
     def _get_rfl_files(self, tx2_file: Path) -> tuple[Path, Path]:
         """Get corresponding rfl1 and rfl2 files from tx2 file path."""
-        base_name = tx2_file.name.replace('tx2', '')
-        rfl1_file = tx2_file.parent / f"{base_name}rfl.mat"
-        rfl2_file = tx2_file.parent / f"{base_name}rfl2.mat"
+        # Use the stem (no ".mat"), then strip "tx2"
+        base_stem = tx2_file.stem.replace('tx2', '')  # "20220908_0_0_"
+        rfl1_file = tx2_file.parent / f"{base_stem}rfl.mat"
+        rfl2_file = tx2_file.parent / f"{base_stem}rfl2.mat"
         return rfl1_file, rfl2_file
     
     def _process_reflection_sweep(self, file_path: Path, sweep_type: str, 
