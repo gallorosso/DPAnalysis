@@ -122,3 +122,5 @@ src/dark_photon/utils/__pycache__/__init__.cpython-312.pyc
 src/dark_photon/utils/__pycache__/caching.cpython-312.pyc
 output/20220908to20220908_WormFalseBaseFalse_lam0.674/plots/rfl_fit_results.png
 output/20220908to20220908_WormFalseBaseFalse_lam0.674/plots/tx_fitting_results.png
+src/dark_photon/analysis/pipeline/stages/__pycache__/reflection_analysis.cpython-312.pyc
+src/dark_photon/analysis/pipeline/stages/__pycache__/reflection_analysis.cpython-312.pyc
