@@ -212,9 +212,31 @@ class ParameterLoadingStage(PipelineStage):
         """Get the number of parameter sets (spectra) loaded."""
         if not scaleinfo:
             return 0
-        # Use the first field to determine the count
-        first_field = next(iter(scaleinfo.values()))
-        return len(first_field) if hasattr(first_field, '__len__') else 1
+
+        # Prefer fields that we know should be per-spectrum vectors
+        preferred_keys = [
+            'loop_time',
+            'Cavity_freq_GHz_tx',
+            'Cavity_freq_GHz_tx2',
+            'Cavity_freq_GHz_rfl',
+            'Cavity_freq_GHz_rfl2',
+            'Cavity_freq',  # after post-processing
+        ]
+
+        for key in preferred_keys:
+            if key in scaleinfo:
+                field = scaleinfo[key]
+                if hasattr(field, '__len__'):
+                    return len(field)
+
+        # Fallback: use the first list-like field
+        for field in scaleinfo.values():
+            if hasattr(field, '__len__'):
+                return len(field)
+
+        # Last resort: everything looks scalar
+        return 1
+
     
     def validate_output(self, data: Dict[str, Any]) -> bool:
         """
