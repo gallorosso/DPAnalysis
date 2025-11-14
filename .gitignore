@@ -20,6 +20,7 @@ src/dark_photon/processing/__pycache__/rfi_mitigation.cpython-312.pyc
 db_diagnose_data_files.py
 db_test_fitting.py
 readme.txt.rtf
+output/
 src/dark_photon/analysis/pipeline/stages/__pycache__/__init__.cpython-312.pyc
 src/dark_photon/analysis/pipeline/__pycache__/__init__.cpython-312.pyc
 src/dark_photon/core/__pycache__/__init__.cpython-312.pyc
