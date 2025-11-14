@@ -70,11 +70,11 @@ class TransmissionAnalysisStage(PipelineStage):
                 params1[i, :], mse1, _, phase_mean, phase_std = self._process_transmission_sweep_with_cache(
                     tx1_file, 'tx', context.run_props.processing, context
                 )
-                params2[i, :], mse2, _ = self._process_transmission_sweep_with_cache(
+                params2[i, :], mse2, _, _, _ = self._process_transmission_sweep_with_cache(
                     tx2_file, 'tx2', context.run_props.processing, context
                 )
                 
-                # Store phase information (only from first sweep) [NEW]
+                # Store phase information (only from first sweep)
                 phase_info[i, :] = [phase_mean, phase_std]
                 
                 # Calculate averages based on type
@@ -94,6 +94,13 @@ class TransmissionAnalysisStage(PipelineStage):
                 warnings.warn(f"Error processing transmission file {tx2_file}: {e}")
                 continue
         
+        print(f"  TransmissionAnalysisStage: processed_count = {processed_count} (out of {num_files})")
+        print("  Example fitted params (first 3 entries):")
+        print("    params1[0]:", params1[0])
+        print("    params2[0]:", params2[0])
+        print("    params_avg[0]:", params_avg[0])
+        print("    mse_values[0]:", mse_values[0])
+        print("    freq_drifts_khz[0]:", freq_drifts_khz[0])
         # Prepare scaleinfo updates [MODIFIED - added phase_info]
         scaleinfo_updates = {
             'txparams': params_avg.tolist(),
