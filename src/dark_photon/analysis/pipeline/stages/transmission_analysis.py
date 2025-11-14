@@ -94,14 +94,15 @@ class TransmissionAnalysisStage(PipelineStage):
                 warnings.warn(f"Error processing transmission file {tx2_file}: {e}")
                 continue
         
-        print(f"  TransmissionAnalysisStage: processed_count = {processed_count} (out of {num_files})")
-        print("  Example fitted params (first 3 entries):")
-        print("    params1[0]:", params1[0])
-        print("    params2[0]:", params2[0])
-        print("    params_avg[0]:", params_avg[0])
-        print("    mse_values[0]:", mse_values[0])
-        print("    freq_drifts_khz[0]:", freq_drifts_khz[0])
-        # Prepare scaleinfo updates [MODIFIED - added phase_info]
+        ##### Some debug
+        # print(f"  TransmissionAnalysisStage: processed_count = {processed_count} (out of {num_files})")
+        # print("  Example fitted params (first 3 entries):")
+        # print("    params1[0]:", params1[0])
+        # print("    params2[0]:", params2[0])
+        # print("    params_avg[0]:", params_avg[0])
+        # print("    mse_values[0]:", mse_values[0])
+        # print("    freq_drifts_khz[0]:", freq_drifts_khz[0])
+        
         scaleinfo_updates = {
             'txparams': params_avg.tolist(),
             'txdriftkHz': freq_drifts_khz.tolist(),
