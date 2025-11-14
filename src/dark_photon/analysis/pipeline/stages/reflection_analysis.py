@@ -322,42 +322,49 @@ class ReflectionAnalysisStage(PipelineStage):
     
     def validate_output(self, data: Dict[str, Any]) -> bool:
         """
-        Validate parameter loading stage outputs.
+        Validate reflection analysis outputs.
         """
-        result = data.get('parameter_loading')
+        # We should be validating the reflection_analysis result,
+        # not parameter_loading (that was a copy-paste bug).
+        result = data.get("reflection_analysis")
         if not result:
-            print("  ✗ No parameter loading result found")
+            print("  ✗ No reflection analysis result found")
             return False
-        
-        if not result.scaleinfo:
-            print("  ✗ No scaleinfo data loaded")
-            return False
-        
-        scaleinfo = result.scaleinfo
 
-        # Check that we have the essential fields that later stages expect
-        essential_fields = ['Cavity_freq', 'loop_time', 'Cavity_freq_tx1', 'Cavity_freq_rfl1']
-        missing_fields = [field for field in essential_fields if field not in scaleinfo]
-        
-        if missing_fields:
-            print(f"  ✗ Missing essential fields in scaleinfo: {missing_fields}")
+        if not result.scaleinfo_updates:
+            print("  ✗ No scaleinfo updates from reflection analysis")
             return False
-        
-        # Determine how many parameter sets we think we loaded
-        param_count = self._get_parameter_count(scaleinfo)
+
+        scaleinfo_updates = result.scaleinfo_updates
+
+        # Check that we have the essential fields the rest of the code expects
+        required_fields = [
+            "rfldriftkHz",
+            "freq_beta",
+            "rfl_base1_db",
+            "rfl_base2_db",
+            "rflparams",
+        ]
+        missing = [f for f in required_fields if f not in scaleinfo_updates]
+        if missing:
+            print(f"  ✗ Reflection scaleinfo_updates missing fields: {missing}")
+            return False
+
+        # Determine how many parameter sets we think we produced
+        param_count = self._get_parameter_count(scaleinfo_updates)
 
         # If the file enumeration stage has already run, cross-check lengths
-        file_enum = data.get('file_enumeration')
+        file_enum = data.get("file_enumeration")
         if file_enum and getattr(file_enum, "files", None) is not None:
             num_files = len(file_enum.files)
             if num_files != param_count:
                 print(
-                    "  ✗ Mismatch between number of data files and parameter entries:\n"
+                    "  ✗ Mismatch between number of data files and reflection parameter entries:\n"
                     f"    - files:      {num_files}\n"
                     f"    - parameters: {param_count}\n"
-                    "    These should be equal for files[i] to match scaleinfo[i]."
+                    "    These should be equal for files[i] to match rflparams[i]."
                 )
                 return False
-        
-        print(f"  ✓ Parameter loading successful - {param_count} parameter sets loaded")
+
+        print(f"  ✓ Reflection analysis successful - {param_count} parameter sets loaded")
         return True
