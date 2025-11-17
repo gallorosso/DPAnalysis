@@ -243,24 +243,181 @@ class JPAGainAnalysisStage(PipelineStage):
 
             gain2Q_amp_dB_fit[i] = float(peak_fit_db - amp_gain_base_dB)
 
-            # --- Reflection-corrected variants (very simple approximation) ---
+            # --- Reflection baseline from rflparams (used for all "corr" 2Q gains) ---
+            rfl_base_db = None
             if rflparams.ndim == 2 and i < rflparams.shape[0]:
-                # In MATLAB, the reflection baseline is pow2db(a4 * f0 + a5)
-                a4 = rflparams[i, 3]
-                a5 = rflparams[i, 4]
-                rfl_base_linear = a4 * f0 + a5
-                if rfl_base_linear <= 0:
-                    rfl_base_db = 0.0
-                else:
+                params_rfl = rflparams[i, :]
+                # MATLAB: rfl_base_dB = pow2db(a4 * f_rfl + a5)
+                # where f_rfl = scaleinfo.rflparams(i,2)
+                a4 = params_rfl[3]
+                a5 = params_rfl[4]
+                f_rfl = params_rfl[1]
+                rfl_base_linear = a4 * f_rfl + a5
+                if rfl_base_linear > 0.0:
                     rfl_base_db = 10.0 * np.log10(rfl_base_linear)
+                else:
+                    rfl_base_db = 0.0
 
+            # --- rfl_corr_dB and rfl_corr_idx (for JPA magnitude correction / plotting) ---
+            rfl_corr_dB = np.zeros_like(amp_db)
+            rfl_corr_idx = None
+
+            if rfl_base_db is not None:
+                # Window width in GHz, as in MATLAB: JPA_cut_window_GHz
+                cut_window_GHz = float(scaleinfo.get("JPA_cut_window_GHz", 5e-4))
+
+                if f_jpa.size > 1:
+                    df = float(np.mean(np.diff(f_jpa)))
+                else:
+                    df = 0.0
+
+                if df > 0.0:
+                    cut_window_idx = int(np.ceil(cut_window_GHz / df))
+
+                    # MATLAB: findex is index closest to init_params1(2);
+                    # we use the fitted JPA center f0, which is numerically very close.
+                    findex = int(np.argmin(np.abs(f_jpa - f0)))
+                    lo_idx = max(findex - cut_window_idx, 0)
+                    hi_idx = min(findex + cut_window_idx + 1, f_jpa.size)
+                    idx_slice = np.arange(lo_idx, hi_idx)
+
+                    # reflection model: same lorentzian_plus_linear as used for rfl fits
+                    params_rfl = rflparams[i, :]
+                    a1, f_rfl, q_rfl, a4, a5 = params_rfl
+                    x = f_jpa[idx_slice]
+                    rfl_peak_linear = (
+                        a1 / (4.0 * (q_rfl ** 2) * ((x / f_rfl) - 1.0) ** 2 + 1.0)
+                        + a4 * x
+                        + a5
+                    )
+                    rfl_peak_linear = np.clip(rfl_peak_linear, 1e-20, None)
+                    rfl_peak_db = 10.0 * np.log10(rfl_peak_linear)
+
+                    rfl_corr_dB[idx_slice] = rfl_peak_db - rfl_base_db
+                    rfl_corr_idx = idx_slice
+
+            # --- Fill 2Q "corr" gains for first JPA profile (amp & sqz) ---
+            if rfl_base_db is not None:
+                # AMP: corrected 2Q gain from JPA fit at its center
                 gain2Q_amp_dB_fit_corr[i] = float(peak_fit_db - rfl_base_db)
 
-                # For now, treat amp2/sqz2 as zeros; they can be filled when we
-                # add explicit fits for jpaamp2/jpasqz2 like MATLAB.
-                gain2Q_amp2_dB_fit_corr[i] = 0.0
-                gain2Q_sqz_dB_fit_corr[i] = gain2Q_sqz_dB_fit[i]
-                gain2Q_sqz2_dB_fit_corr[i] = 0.0
+                # SQZ: only if we managed to fit it
+                if not np.isnan(gain2Q_sqz_dB_fit[i]) and gain2Q_sqz_dB_fit[i] != 0.0:
+                    # We already computed peak_sqz_db in the sqz fit block
+                    try:
+                        gain2Q_sqz_dB_fit_corr[i] = float(peak_sqz_db - rfl_base_db)
+                    except NameError:
+                        # sqz fit failed, leave at default 0
+                        pass
+                        # --- Second JPA profile (jpaamp2 / jpasqz2) ---
+                        
+            if has_jpa2:
+                try:
+                    data2 = scipy.io.loadmat(str(jpa2_file))
+                except Exception as exc:
+                    warnings.warn(f"Could not load {jpa2_file.name}: {exc}")
+                    data2 = None
+
+                if data2 is not None:
+                    # --- AMP2 ---
+                    try:
+                        # MATLAB uses data2.f_GHz_jpaamp2
+                        if "f_GHz_jpaamp2" in data2:
+                            f_jpa2 = np.asarray(data2["f_GHz_jpaamp2"]).flatten()
+                        elif "f_jpaamp2_GHz" in data2:
+                            f_jpa2 = np.asarray(data2["f_jpaamp2_GHz"]).flatten()
+                        else:
+                            raise KeyError("No f_GHz_jpaamp2 / f_jpaamp2_GHz in jpaamp2 file")
+
+                        i_amp2 = np.asarray(data2["I_jpaamp2"]).flatten()
+                        q_amp2 = np.asarray(data2["Q_jpaamp2"]).flatten()
+                    except KeyError as exc:
+                        warnings.warn(f"Missing AMP2 fields in {jpa2_file.name}: {exc}")
+                        f_jpa2 = None
+
+                    if f_jpa2 is not None and f_jpa2.size and i_amp2.size and q_amp2.size:
+                        power_amp2 = iq_to_magnitude(i_amp2, q_amp2)
+                        power_amp2 = np.clip(power_amp2, 1e-20, None)
+                        amp2_db = 10.0 * np.log10(power_amp2)
+
+                        # Find peak and simple fit window (mirror the logic used above for AMP1)
+                        center_idx2 = int(np.argmax(amp2_db))
+                        peak_freq2 = float(f_jpa2[center_idx2])
+
+                        # Use same Q guess as from the first fit as a starting point
+                        # (Q from best_params is called 'Q' above)
+                        bw_hz2 = (peak_freq2 * 1e9) / max(Q, 1e-9)
+                        sigma_hz2 = bw_hz2 / (2.0 * scipy.math.sqrt(2.0 * scipy.math.log(2.0)))
+                        sigma_GHz2 = sigma_hz2 / 1e9
+                        n_sigma2 = jpa_fit_width_sigma * r_JPA_prof_cut
+
+                        freq_min2 = peak_freq2 - n_sigma2 * sigma_GHz2
+                        freq_max2 = peak_freq2 + n_sigma2 * sigma_GHz2
+                        lo2 = int(np.searchsorted(f_jpa2, freq_min2, side="left"))
+                        hi2 = int(np.searchsorted(f_jpa2, freq_max2, side="right"))
+                        lo2 = max(lo2, 0)
+                        hi2 = min(hi2, len(f_jpa2))
+
+                        if hi2 - lo2 >= 5:
+                            x_fit2 = f_jpa2[lo2:hi2]
+                            y_fit2 = amp2_db[lo2:hi2]
+
+                            p0_2 = np.array([
+                                float(np.max(y_fit2) - np.min(y_fit2)),  # height
+                                float(peak_freq2),                       # center
+                                Q,                                       # reuse Q as guess
+                                slope,                                  # slope & offset from AMP1
+                                offset,
+                            ])
+
+                            try:
+                                best_params_amp2, _, _ = fit_lorentzian(x_fit2, y_fit2, p0_2)
+                                P2, f02, Q2, m2, b2 = best_params_amp2
+                                peak2_db = lorentzian_plus_linear(
+                                    np.array([f02]), P2, f02, Q2, m2, b2
+                                )[0]
+
+                                # reflection-corrected 2Q gain (AMP2)
+                                if rfl_base_db is not None:
+                                    gain2Q_amp2_dB_fit_corr[i] = float(peak2_db - rfl_base_db)
+                            except Exception as exc:
+                                warnings.warn(f"Second JPA amp fit failed for {jpa2_file.name}: {exc}")
+
+                    # --- SQZ2 (squeezed second profile) ---
+                    if "I_jpasqz2" in data2 and "Q_jpasqz2" in data2:
+                        i_sqz2 = np.asarray(data2["I_jpasqz2"]).flatten()
+                        q_sqz2 = np.asarray(data2["Q_jpasqz2"]).flatten()
+                        if i_sqz2.size and q_sqz2.size and f_jpa2 is not None:
+                            power_sqz2 = iq_to_magnitude(i_sqz2, q_sqz2)
+                            power_sqz2 = np.clip(power_sqz2, 1e-20, None)
+                            sqz2_db = 10.0 * np.log10(power_sqz2)
+
+                            # Use the same frequency window lo2:hi2 as AMP2
+                            if hi2 - lo2 >= 5:
+                                x_fit2 = f_jpa2[lo2:hi2]
+                                y_sqz2_fit = sqz2_db[lo2:hi2]
+
+                                p0_sqz2 = np.array([
+                                    float(np.max(y_sqz2_fit) - np.min(y_sqz2_fit)),
+                                    float(peak_freq2),
+                                    max(Q, 1e-9),
+                                    0.0,
+                                    float(np.median(y_sqz2_fit)),
+                                ])
+
+                                try:
+                                    best_params_sqz2, _, _ = fit_lorentzian(
+                                        x_fit2, y_sqz2_fit, p0_sqz2
+                                    )
+                                    P_s2, f0_s2, Q_s2, m_s2, b_s2 = best_params_sqz2
+                                    peak_sqz2_db = lorentzian_plus_linear(
+                                        np.array([f0_s2]), P_s2, f0_s2, Q_s2, m_s2, b_s2
+                                    )[0]
+
+                                    if rfl_base_db is not None:
+                                        gain2Q_sqz2_dB_fit_corr[i] = float(peak_sqz2_db - rfl_base_db)
+                                except Exception as exc:
+                                    warnings.warn(f"Squeezed JPA2 fit failed for {jpa2_file.name}: {exc}")
 
             processed += 1
 
