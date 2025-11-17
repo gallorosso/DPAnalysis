@@ -190,12 +190,25 @@ class JPAGainAnalysisStage(PipelineStage):
                 warnings.warn(f"JPA fit failed for {jpa_file.name}: {exc}")
                 continue
 
-            # Store fit and MSE
+            # --- Use optimized_fit_jpa (MATLAB optimizedfitjpaJ equivalent) ---
+            try:
+                best_params, mse_val, (rg_start, rg_end) = optimized_fit_jpa(
+                    i_amp,
+                    q_amp,
+                    f_jpa,
+                    proc_par.__dict__ if hasattr(proc_par, "__dict__") else dict(fit_cfg),
+                )
+            except Exception as exc:
+                warnings.warn(f"JPA JPA-optimized fit failed for {jpa_file.name}: {exc}")
+                continue
+
             amp_gain_fit[i, :] = best_params
             jpa_mse[i] = mse_val
 
-            # --- Simple bandwidth and Q2gain estimate ---
+            # Extract basic fit parameters
             P_max, f0, Q, slope, offset = best_params
+
+            # --- Bandwidth and Q² gain (as in MATLAB) ---
             if Q == 0:
                 bandwidth_hz = 0.0
             else:
@@ -207,44 +220,28 @@ class JPAGainAnalysisStage(PipelineStage):
             else:
                 q2gain[i] = 0.0
 
-            # --- 2Q gain in dB: subtract a baseline from the peak ---
-            # Evaluate the fit at resonance
-            peak_fit_db = lorentzian_plus_linear(np.array([f0]), P_max, f0, Q, slope, offset)[0]
+            # --- 2Q gain in dB: baseline from ends of amplitude profile ---
+            amp2 = iq_to_magnitude(i_amp, q_amp)
+            amp_db = 10.0 * np.log10(amp2)
 
-            # Baseline from the ends of the *measured* JPA profile (like MATLAB)
-            edge = min(10, len(amp_db) // 4)
-            if edge > 0:
-                baseline_amp_db = 0.5 * (np.mean(amp_db[:edge]) + np.mean(amp_db[-edge:]))
+            # Same baseline definition as MATLAB:
+            # amp_gain_base_dB = mean(pow2db(first 10 pts)) + mean(pow2db(last 10 pts)))/2
+            n_edge = min(10, len(amp_db) // 4)
+            if n_edge > 0:
+                amp_gain_base_dB = 0.5 * (
+                    float(np.mean(amp_db[:n_edge])) +
+                    float(np.mean(amp_db[-n_edge:]))
+                )
             else:
-                baseline_amp_db = float(np.mean(amp_db))
+                amp_gain_base_dB = float(np.mean(amp_db))
 
-            gain2Q_amp_dB_fit[i] = float(peak_fit_db - baseline_amp_db)
+            # Evaluate fit at resonance frequency (best_params[2])
+            peak_fit_linear = lorentzian_plus_linear(
+                np.array([f0]), P_max, f0, Q, slope, offset
+            )[0]
+            peak_fit_db = 10.0 * np.log10(peak_fit_linear)
 
-            # --- Squeezed fit (if available) ---
-            if sqz_db is not None:
-                # Fit on the same index window for now
-                y_sqz_fit = sqz_db[lo:hi]
-                p0_sqz = np.array([
-                    float(np.max(y_sqz_fit) - np.min(y_sqz_fit)),
-                    float(peak_freq),
-                    1000.0,
-                    0.0,
-                    float(np.median(y_sqz_fit)),
-                ])
-                try:
-                    best_sqz_params, cov_sqz, mse_sqz = fit_lorentzian(x_fit, y_sqz_fit, p0_sqz)
-                    sqz_gain_fit[i, :] = best_sqz_params
-                    # Evaluate squeezed fit at resonance
-                    P_s, f0_s, Q_s, m_s, b_s = best_sqz_params
-                    peak_sqz_db = lorentzian_plus_linear(np.array([f0_s]), P_s, f0_s, Q_s, m_s, b_s)[0]
-                    # Baseline as for amp profile
-                    if edge > 0:
-                        baseline_sqz_db = 0.5 * (np.mean(sqz_db[:edge]) + np.mean(sqz_db[-edge:]))
-                    else:
-                        baseline_sqz_db = float(np.mean(sqz_db))
-                    gain2Q_sqz_dB_fit[i] = float(peak_sqz_db - baseline_sqz_db)
-                except Exception as exc:
-                    warnings.warn(f"Squeezed JPA fit failed for {jpa_file.name}: {exc}")
+            gain2Q_amp_dB_fit[i] = float(peak_fit_db - amp_gain_base_dB)
 
             # --- Reflection-corrected variants (very simple approximation) ---
             if rflparams.ndim == 2 and i < rflparams.shape[0]:
