@@ -74,3 +74,16 @@ class ScaleinfoMergeResult:
     """Final merged scaleinfo including fit results and optional overrides."""
     scaleinfo: Dict[str, Any] = field(default_factory=dict)
     status: str = "pending"
+
+@dataclass
+class JPAGainAnalysisResult:
+    """Results from JPA gain analysis (JPAgainAutorun equivalent)."""
+    # Dictionary of fields to merge into scaleinfo
+    scaleinfo_updates: Dict[str, Any] = field(default_factory=dict)
+
+    # Key diagnostic arrays (optional but useful for debugging)
+    jpa_mse: Optional[np.ndarray] = None
+    jpa_bandwidth: Optional[np.ndarray] = None
+    q2gain: Optional[np.ndarray] = None
+
+    status: str = "pending"

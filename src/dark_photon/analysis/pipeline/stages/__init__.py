@@ -8,6 +8,7 @@ from .parameter_loading import ParameterLoadingStage
 from .transmission_analysis import TransmissionAnalysisStage
 from .reflection_analysis import ReflectionAnalysisStage
 from .scaleinfo_merge import ScaleinfoMergeStage
+from .jpa_analysis import JPAGainAnalysisStage
 
 __all__ = [
     'InitializationStage',
@@ -16,4 +17,5 @@ __all__ = [
     'TransmissionAnalysisStage',
     'ReflectionAnalysisStage',
     'ScaleinfoMergeStage',
+    'JPAGainAnalysisStage',
 ]

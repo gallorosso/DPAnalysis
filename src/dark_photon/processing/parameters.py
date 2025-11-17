@@ -28,6 +28,14 @@ class ProcessingParameters:
         self._override_if_window(options)
         self._override_jpa_cut_parameters(options)
     
+        # Ensure JPA-related fitting parameters have sensible defaults
+        if 'JPA_gbw_prod' not in self.fitting:
+            # MATLAB JPAgainAutorun default; can be overridden from YAML
+            self.fitting['JPA_gbw_prod'] = 8.15e7
+        if 'jpa_fit_width_sigma' not in self.fitting:
+            # By default, tie the fit width to the JPA profile cut parameter
+            self.fitting['jpa_fit_width_sigma'] = self.fitting.get('r_JPA_prof_cut', 5)
+    
     def _override_fitting_parameters(self, options):
         """Override fitting parameters based on rescan status."""
         if options.rescan:
