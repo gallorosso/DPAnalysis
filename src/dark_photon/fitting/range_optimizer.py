@@ -106,6 +106,165 @@ def optimized_fit(type: Literal['tx', 'rfl'], i_data: np.ndarray, q_data: np.nda
     
     return bestfitparams, mse, datarange
 
+def optimized_fit_jpa(
+    i_data: np.ndarray,
+    q_data: np.ndarray,
+    freq: np.ndarray,
+    proc_par: Dict[str, float],
+) -> Tuple[np.ndarray, float, Tuple[int, int]]:
+    """
+    Python equivalent of optimizedfitjpaJ.m for JPA gain profiles.
+
+    Args:
+        i_data, q_data : I/Q arrays for the JPA amplitude measurement
+        freq           : frequency array [GHz]
+        proc_par       : dict-like processing parameters; must provide
+                         'jpa_fit_width_sigma' and 'jpa_fit_buffer_bins'
+
+    Returns:
+        bestfit_params : array of 5 fit parameters (same convention as cavity_fit)
+        mse            : mean squared error of the chosen fit
+        data_range     : (start_idx, end_idx) indices of the window used
+                         (0-based, inclusive on both ends)
+    """
+    i_data = np.asarray(i_data).flatten()
+    q_data = np.asarray(q_data).flatten()
+    freq = np.asarray(freq).flatten()
+
+    npts = len(freq)
+    if npts < 5:
+        raise ValueError("optimized_fit_jpa: not enough data points")
+
+    # ------------------------------
+    # Quick magnitude and basic stats
+    # ------------------------------
+    amp2 = iq_to_magnitude(i_data, q_data)          # linear power
+    amp_db = 10.0 * np.log10(amp2)                  # pow2db analog
+
+    # Find peak in dB (same as MATLAB: [max_mag,maxloc] = max(quick_mag_db);)
+    peak_idx = int(np.argmax(amp_db))
+
+    # Approximate FWHM in *index* space, using dB values
+    max_val = amp_db[peak_idx]
+    threshold = max_val - 3.0  # 3 dB down
+
+    # Search to the right for half-maximum crossing
+    right = np.where(amp_db[peak_idx:] <= threshold)[0]
+    if len(right) == 0:
+        bw_idx = npts - 1
+    else:
+        bw_idx = peak_idx + int(right[0])
+
+    # Basic width in bins
+    jpa_fit_width_sigma = float(proc_par.get("jpa_fit_width_sigma", 5.0))
+    bw = abs(peak_idx - bw_idx) * jpa_fit_width_sigma
+
+    # Bounds on half-width (in bins)
+    min_halfwidth = max(int(round(npts / 10.0)), 5)
+    max_halfwidth = int(round(npts / 2.0 - 1))
+
+    width = int(round(bw))
+    if width < min_halfwidth:
+        width = min_halfwidth
+    if width > max_halfwidth:
+        width = max_halfwidth
+
+    # Number of widths to try around this guess (MATLAB uses T = 20)
+    T = 20
+    lnbr = T // 2
+    width_list = np.zeros(T, dtype=int)
+    for j in range(T):
+        width_list[j] = width - lnbr + j
+
+    # ------------------------------
+    # Initial guess for fit parameters (like MATLAB)
+    # ------------------------------
+    amp_peak_linear = amp2[peak_idx]
+    f0_guess = freq[peak_idx]
+    Q_guess = 1000.0
+    slope_guess = 0.0
+    offset_guess = np.median(amp2)
+
+    init_params = np.array(
+        [amp_peak_linear, f0_guess, Q_guess, slope_guess, offset_guess],
+        dtype=float,
+    )
+
+    # ------------------------------
+    # Loop over width_list and choose the most "symmetric" residuals
+    # ------------------------------
+    best_idx = None
+    bestfit_params = None
+    best_mse = None
+    symcheck = np.full(T, np.inf)
+
+    for jj, fit_halfwidth in enumerate(width_list):
+        # MATLAB: itrunc = max(1, maxloc - fit_halfwidth); etc., 1-based.
+        # Here we convert to 0-based.
+        start = max(0, peak_idx - fit_halfwidth)
+        stop = min(npts - 1, peak_idx + fit_halfwidth)
+        if stop <= start + 3:
+            continue
+
+        i_slice = i_data[start:stop + 1]
+        q_slice = q_data[start:stop + 1]
+        f_slice = freq[start:stop + 1]
+
+        try:
+            # cavity_fit returns bestfit_params and mse plus extra info;
+            # we only need the first two for this logic.
+            fit_params, mse_val, residuals, _subset_start, _subset_end, *_ = cavity_fit(
+                "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth, proc_par
+            )
+        except Exception:
+            continue
+
+        # Compute a crude "symmetry" measure of the residuals.
+        # MATLAB code has a small bug where only the last j's value matters;
+        # to stay numerically close, we mimic that behavior.
+        res = np.asarray(residuals).flatten()
+        nhalf = min(fit_halfwidth, len(res) // 2)
+        if nhalf <= 0:
+            continue
+
+        # Use only the last j pair, like MATLAB's effective behavior
+        j = nhalf - 1
+        sym_val = float((res[j] - res[-(j + 1)]) ** 2)
+        symcheck[jj] = sym_val
+
+    # Pick width that minimizes symcheck
+    valid = np.isfinite(symcheck)
+    if not np.any(valid):
+        raise RuntimeError("optimized_fit_jpa: all candidate fits failed")
+
+    best_idx = int(np.argmin(symcheck[valid]))
+    # Map best_idx back to original index in width_list
+    valid_indices = np.where(valid)[0]
+    chosen_j = valid_indices[best_idx]
+    chosen_halfwidth = width_list[chosen_j]
+
+    # Final fit with chosen_halfwidth
+    start = max(0, peak_idx - chosen_halfwidth)
+    stop = min(npts - 1, peak_idx + chosen_halfwidth)
+
+    i_slice = i_data[start:stop + 1]
+    q_slice = q_data[start:stop + 1]
+    f_slice = freq[start:stop + 1]
+
+    fit_params, mse_val, residuals, subset_start_ind, subset_end_ind, *_ = cavity_fit(
+        "tx", i_slice, q_slice, f_slice, init_params, chosen_halfwidth, proc_par
+    )
+
+    # Convert subset indices (local to slice) back to global 0-based indices
+    global_start = start + int(subset_start_ind)
+    global_end = start + int(subset_end_ind)
+
+    bestfit_params = fit_params
+    best_mse = float(mse_val)
+    data_range = (global_start, global_end)
+
+    return bestfit_params, best_mse, data_range
+
 def _smart_initialization(type: Literal['tx', 'rfl'], quick_mag: np.ndarray,
                          freq: np.ndarray, proc_par: Dict[str, Any]) -> Tuple[np.ndarray, int, int]:
     """

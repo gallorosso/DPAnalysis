@@ -21,7 +21,12 @@ import warnings
 
 from ..base import PipelineStage, PipelineContext
 from ..results import JPAGainAnalysisResult, ScaleinfoMergeResult
-from src.dark_photon.fitting import lorentzian_plus_linear, fit_lorentzian, iq_to_magnitude
+from src.dark_photon.fitting import (
+    lorentzian_plus_linear,
+    fit_lorentzian,
+    iq_to_magnitude,
+    optimized_fit_jpa,
+)
 
 
 class JPAGainAnalysisStage(PipelineStage):
