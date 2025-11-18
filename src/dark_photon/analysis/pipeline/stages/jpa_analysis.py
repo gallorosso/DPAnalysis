@@ -71,6 +71,8 @@ class JPAGainAnalysisStage(PipelineStage):
         # ------------------------------------------------------------------
         proc_par = context.run_props.processing
         fit_cfg = proc_par.fitting
+        # r_JPA_prof_cut
+        r_JPA_prof_cut = fit_cfg.get("r_JPA_prof_cut", 5.0)
 
         # Default values chosen to match / resemble the MATLAB code.
         jpa_gbw_prod = fit_cfg.get("JPA_gbw_prod", 8.15e7)
@@ -310,7 +312,7 @@ class JPAGainAnalysisStage(PipelineStage):
                         # sqz fit failed, leave at default 0
                         pass
                         # --- Second JPA profile (jpaamp2 / jpasqz2) ---
-                        
+
             if has_jpa2:
                 try:
                     data2 = scipy.io.loadmat(str(jpa2_file))
