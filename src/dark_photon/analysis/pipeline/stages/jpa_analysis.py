@@ -243,7 +243,54 @@ class JPAGainAnalysisStage(PipelineStage):
             )[0]
             peak_fit_db = 10.0 * np.log10(peak_fit_linear)
 
-            gain2Q_amp_dB_fit[i] = float(peak_fit_db - amp_gain_base_dB)
+            # Baseline from the ends of the *measured* JPA profile (like MATLAB)
+            edge = min(10, len(amp_db) // 4)
+            if edge > 0:
+                baseline_amp_db = 0.5 * (np.mean(amp_db[:edge]) + np.mean(amp_db[-edge:]))
+            else:
+                baseline_amp_db = float(np.mean(amp_db))
+
+            gain2Q_amp_dB_fit[i] = float(peak_fit_db - baseline_amp_db)
+
+                        # --- Squeezed fit (if available) ---
+            if sqz_db is not None:
+                # Fit on the same index window lo:hi as the AMP fit
+                y_sqz_fit = sqz_db[lo:hi]
+                p0_sqz = np.array([
+                    float(np.max(y_sqz_fit) - np.min(y_sqz_fit)),  # height
+                    float(peak_freq),                              # center
+                    1000.0,                                        # Q guess
+                    0.0,                                           # slope
+                    float(np.median(y_sqz_fit)),                   # offset
+                ])
+                try:
+                    best_sqz_params, cov_sqz, mse_sqz = fit_lorentzian(x_fit, y_sqz_fit, p0_sqz)
+                    sqz_gain_fit[i, :] = best_sqz_params
+
+                    # Evaluate squeezed fit at resonance
+                    P_s, f0_s, Q_s, m_s, b_s = best_sqz_params
+                    peak_sqz_db = lorentzian_plus_linear(
+                        np.array([f0_s]), P_s, f0_s, Q_s, m_s, b_s
+                    )[0]
+
+                    # Baseline for squeezed profile (same logic as amp)
+                    if edge > 0:
+                        baseline_sqz_db = 0.5 * (
+                            np.mean(sqz_db[:edge]) + np.mean(sqz_db[-edge:])
+                        )
+                    else:
+                        baseline_sqz_db = float(np.mean(sqz_db))
+
+                    gain2Q_sqz_dB_fit[i] = float(peak_sqz_db - baseline_sqz_db)
+
+                except Exception as exc:
+                    warnings.warn(f"Squeezed JPA fit failed for {jpa_file.name}: {exc}")
+                    # If the fit fails, we simply leave gain2Q_sqz_dB_fit[i] at its default (0)
+                    # and do not define peak_sqz_db for this run
+                    peak_sqz_db = None
+            else:
+                peak_sqz_db = None
+
 
             # --- Reflection baseline from rflparams (used for all "corr" 2Q gains) ---
             rfl_base_db = None
