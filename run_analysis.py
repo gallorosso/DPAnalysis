@@ -4,6 +4,7 @@ Main analysis script for dark photon search data processing.
 """
 
 import warnings
+
 warnings.filterwarnings('ignore')
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from src.dark_photon.io import load_run_dirs_from_options
 from src.dark_photon.analysis import create_preprocessing_pipeline, PipelineContext
 from src.dark_photon.plotting import plot_tx_summary, plot_rfl_summary
 from src.dark_photon.plotting.styles import apply_default_style
+from dark_photon.plotting.jpa import plot_jpa_gain_profiles
 
 def main():
     # 1. Load base configuration from YAML file
@@ -59,20 +61,28 @@ def main():
         print("  Generating cavity summary plots.")
         plot_dir = context.plot_dir or (options.output_dir / "plots")
 
-        # Retrieve results and scaleinfo
+        # Retrieve results and scaleinfo - ADD JPA RESULTS
         param_res = results["parameter_loading"]
         tx_res = results["transmission_analysis"]
         rfl_res = results["reflection_analysis"]
+        jpa_res = results["jpa_analysis"]
+        if jpa_res:
+            print(f"✓ JPA analysis completed: {len(jpa_res.scaleinfo_updates.get('JPA_mse', []))} datasets")
+        else:
+            print("✗ JPA analysis failed or not found in results")
 
         scaleinfo = param_res.scaleinfo.copy()
         scaleinfo.update(tx_res.scaleinfo_updates)
         scaleinfo.update(rfl_res.scaleinfo_updates)
+        scaleinfo.update(jpa_res.scaleinfo_updates)
 
         # TX summary
         plot_tx_summary(tx_res, scaleinfo, plot_dir, show=False)
-
-        # RFL summary
+        # RFL summary  
         plot_rfl_summary(rfl_res, scaleinfo, plot_dir, show=False)
+        # JPA plots - ADD THESE LINES
+        plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, files, plot_dir, show=False)
+        plot_jpa_summary(jpa_res.scaleinfo_updates, scaleinfo, plot_dir, show=False)
 
     
     print("=" * 60)
