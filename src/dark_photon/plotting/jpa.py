@@ -15,22 +15,41 @@ def plot_jpa_gain_profiles(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any
                           files: List[Path], plot_dir: Path, show: bool = False) -> None:
     """
     Create individual JPA gain profile plots for each file.
-    
-    Equivalent to the individual file plotting in JPAgainAutorun.
-    
-    Args:
-        jpa_results: Results from JPAGainAnalysisStage
-        scaleinfo: Global scaleinfo dictionary
-        files: List of data files
-        plot_dir: Directory to save plots
-        show: Whether to display plots interactively
     """
     plot_dir = _ensure_path(plot_dir)
     ensure_dir(plot_dir)
     
     print("  Generating JPA gain profile plots...")
     
-    # Create video writer if needed
+    # Check if FFmpeg is available
+    ffmpeg_available = _check_ffmpeg_available()
+    
+    if ffmpeg_available:
+        # Create video with FFmpeg
+        _create_jpa_video(jpa_results, scaleinfo, files, plot_dir)
+    else:
+        # Fallback: Create individual PNG files
+        _create_jpa_individual_plots(jpa_results, scaleinfo, files, plot_dir)
+    
+    print(f"    JPA gain plots saved to: {plot_dir}")
+
+
+def _check_ffmpeg_available() -> bool:
+    """Check if FFmpeg is available on the system."""
+    import subprocess
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("    Warning: FFmpeg not found. Creating individual PNG files instead of video.")
+        return False
+
+
+def _create_jpa_video(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any],
+                     files: List[Path], plot_dir: Path) -> None:
+    """Create JPA gain profile video using FFmpeg."""
+    from matplotlib.animation import FFMpegWriter
+    
     video_path = plot_dir / "JPAgain.mp4"
     writer = FFMpegWriter(fps=3, metadata=dict(title='JPA Gain Profiles'))
     
@@ -45,8 +64,109 @@ def plot_jpa_gain_profiles(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any
                 continue
     
     plt.close(fig)
-    print(f"    JPA gain video saved: {video_path}")
 
+
+def _create_jpa_individual_plots(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any],
+                               files: List[Path], plot_dir: Path) -> None:
+    """Create individual PNG files for each JPA profile (fallback when no FFmpeg)."""
+    individual_plot_dir = plot_dir / "jpa_individual_profiles"
+    ensure_dir(individual_plot_dir)
+    
+    for i, tx2_file in enumerate(files):
+        try:
+            fig = plt.figure(figsize=(12, 8), constrained_layout=True)
+            _plot_single_jpa_profile_fallback(fig, i, tx2_file, jpa_results, scaleinfo)
+            
+            # Save individual plot
+            filename = f"jpa_profile_{i:03d}.png"
+            save_fig(fig, individual_plot_dir, filename.replace('.png', ''), close=True)
+            
+        except Exception as e:
+            print(f"    Warning: Could not create individual JPA plot for {tx2_file}: {e}")
+            plt.close('all')
+            continue
+
+
+def _plot_single_jpa_profile_fallback(fig: plt.Figure, file_index: int, tx2_file: Path,
+                                    jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any]) -> None:
+    """
+    Plot a single JPA gain profile for individual PNG file (no video writer).
+    """
+    plt.figure(fig.number)
+    
+    # Get file base and load JPA data
+    file_base = _get_file_base(tx2_file)
+    jpaamp_file = Path(f"{file_base}jpaamp.mat")
+    
+    if not jpaamp_file.exists():
+        return
+    
+    try:
+        data = scipy.io.loadmat(str(jpaamp_file))
+        data2 = {}
+        jpaamp2_file = Path(f"{file_base}jpaamp2.mat")
+        if jpaamp2_file.exists():
+            data2 = scipy.io.loadmat(str(jpaamp2_file))
+        
+        # Extract data for plotting (same as original function)
+        f_ghz_amp = data['f_GHz_jpaamp'].flatten()
+        i_amp = data['I_jpaamp'].flatten()
+        q_amp = data['Q_jpaamp'].flatten()
+        mag_amp_dB = 10 * np.log10(i_amp**2 + q_amp**2)
+        
+        # Get fit parameters
+        amp_fit_params = np.array(jpa_results['amp_gain_fit'][file_index])
+        sqz_fit_params = np.array(jpa_results['sqz_gain_fit'][file_index])
+        
+        # Create frequency array for fit curves
+        f_fit = np.linspace(f_ghz_amp.min(), f_ghz_amp.max(), 200)
+        
+        # Plot raw data
+        plt.plot(f_ghz_amp, mag_amp_dB, '-r', linewidth=1, label='Data')
+        
+        # Plot fit curves if available
+        if np.any(amp_fit_params != 0):
+            amp_fit_dB = 10 * np.log10(_lorentzian_function(f_fit, amp_fit_params))
+            plt.plot(f_fit, amp_fit_dB, '-b', linewidth=2, label='Fit')
+        
+        # Plot secondary data if available and has squeezer gain
+        sqz_gain = jpa_results['gain2Q_sqz_dB_fit'][file_index]
+        if sqz_gain > 0 and data2:
+            try:
+                f_ghz_amp2 = data2['f_GHz_jpaamp2'].flatten()
+                i_amp2 = data2['I_jpaamp2'].flatten()
+                q_amp2 = data2['Q_jpaamp2'].flatten()
+                mag_amp2_dB = 10 * np.log10(i_amp2**2 + q_amp2**2)
+                
+                plt.plot(f_ghz_amp2, mag_amp2_dB, '-c', linewidth=1, label='Data2')
+                
+                # Plot squeezer data
+                if 'f_GHz_jpasqz' in data:
+                    f_ghz_sqz = data['f_GHz_jpasqz'].flatten()
+                    i_sqz = data['I_jpasqz'].flatten()
+                    q_sqz = data['Q_jpasqz'].flatten()
+                    mag_sqz_dB = 10 * np.log10(i_sqz**2 + q_sqz**2)
+                    plt.plot(f_ghz_sqz, mag_sqz_dB, '-m', linewidth=1, label='SQZ Data')
+                
+                if np.any(sqz_fit_params != 0):
+                    sqz_fit_dB = 10 * np.log10(_lorentzian_function(f_fit, sqz_fit_params))
+                    plt.plot(f_fit, sqz_fit_dB, '-c', linewidth=2, label='SQZ Fit')
+                    
+            except Exception:
+                pass
+        
+        # Add plot decorations
+        bandwidth = jpa_results['JPAbandwidth'][file_index]
+        plt.xlabel('Frequency [GHz]')
+        plt.ylabel('Gain [dB]')
+        plt.title(f'JPA: {jpaamp_file.name}\nBandwidth: {bandwidth:.0f} Hz', 
+                 fontsize=10, pad=20)
+        plt.legend(fontsize=8)
+        plt.grid(True, alpha=0.3)
+        plt.ylim(-30, 5)
+        
+    except Exception as e:
+        print(f"    Could not plot JPA profile for {jpaamp_file.name}: {e}")
 
 def plot_jpa_summary(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any], 
                     plot_dir: Path, show: bool = False) -> None:
