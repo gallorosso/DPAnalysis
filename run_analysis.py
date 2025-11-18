@@ -15,7 +15,7 @@ from src.dark_photon.io import load_run_dirs_from_options
 from src.dark_photon.analysis import create_preprocessing_pipeline, PipelineContext
 from src.dark_photon.plotting import plot_tx_summary, plot_rfl_summary
 from src.dark_photon.plotting.styles import apply_default_style
-from dark_photon.plotting.jpa import plot_jpa_gain_profiles, plot_jpa_summary
+from src.dark_photon.plotting.jpa import plot_jpa_gain_profiles, plot_jpa_summary
 
 def main():
     # 1. Load base configuration from YAML file
