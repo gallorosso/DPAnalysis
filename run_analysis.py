@@ -15,7 +15,7 @@ from src.dark_photon.io import load_run_dirs_from_options
 from src.dark_photon.analysis import create_preprocessing_pipeline, PipelineContext
 from src.dark_photon.plotting import plot_tx_summary, plot_rfl_summary
 from src.dark_photon.plotting.styles import apply_default_style
-from dark_photon.plotting.jpa import plot_jpa_gain_profiles
+from dark_photon.plotting.jpa import plot_jpa_gain_profiles, plot_jpa_summary
 
 def main():
     # 1. Load base configuration from YAML file
@@ -66,6 +66,7 @@ def main():
         tx_res = results["transmission_analysis"]
         rfl_res = results["reflection_analysis"]
         jpa_res = results["jpa_analysis"]
+        file_enum = results["file_enumeration"]
         if jpa_res:
             print(f"✓ JPA analysis completed: {len(jpa_res.scaleinfo_updates.get('JPA_mse', []))} datasets")
         else:
@@ -81,7 +82,7 @@ def main():
         # RFL summary  
         plot_rfl_summary(rfl_res, scaleinfo, plot_dir, show=False)
         # JPA plots - ADD THESE LINES
-        plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, files, plot_dir, show=False)
+        plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, file_enum.files, plot_dir, show=False)
         plot_jpa_summary(jpa_res.scaleinfo_updates, scaleinfo, plot_dir, show=False)
 
     
