@@ -11,7 +11,6 @@ from matplotlib.animation import FFMpegWriter
 
 from .utils import ensure_dir, save_fig
 
-
 def plot_jpa_gain_profiles(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any], 
                           files: List[Path], plot_dir: Path, show: bool = False) -> None:
     """
