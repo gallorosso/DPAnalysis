@@ -313,11 +313,6 @@ class JPAGainAnalysisStage(PipelineStage):
         bandwidth = self._calculate_bandwidth(amp_fit_params)
         q2_gain = self._calculate_q2_gain(bandwidth, proc_par.get('JPA_gbw_prod', 8.15e7))
         
-        # Calculate various gain measurements
-        gain_results = self._calculate_gain_measurements(
-            data, data2, has_jpa2, amp_fit_params, rfl_params, proc_par
-        )
-        
         # Fit squeezer data if available
         sqz_fit_params = np.zeros(5)
         try:
@@ -348,6 +343,11 @@ class JPAGainAnalysisStage(PipelineStage):
                 )
             except Exception:
                 pass
+
+        # Calculate various gain measurements
+        gain_results = self._calculate_gain_measurements(
+            data, data2, has_jpa2, amp_fit_params, rfl_params, proc_par
+        )
         
         # Calculate corrected gains with reflection correction
         corrected_gains = self._calculate_corrected_gains(
@@ -430,8 +430,8 @@ class JPAGainAnalysisStage(PipelineStage):
         return float(q2_gain)
     
     def _calculate_gain_measurements(self, data: Dict, data2: Dict, has_jpa2: bool,
-                                  amp_fit_params: np.ndarray, rfl_params: np.ndarray,
-                                  proc_par: Dict[str, Any]) -> Dict[str, float]:
+                                  amp_fit_params: np.ndarray, sqz_fit_params: np.ndarray,
+                                  amp2_fit_params: np.ndarray, sqz2_fit_params: np.ndarray) -> Dict[str, float]:
         """
         Calculate various gain measurements from JPA data.
         
@@ -452,15 +452,27 @@ class JPAGainAnalysisStage(PipelineStage):
         else:
             results['gain1Q_sqz_dB2'] = 0.0
         
-        # Calculate 2Q gain from fit (amplifier)
-        results['gain2Q_amp_dB_fit'] = self._calculate_2q_gain_from_fit(
+        # Calculate 2Q gain from fits (amplifier)
+        primary_amp_2q = self._calculate_2q_gain_from_fit(
             data, amp_fit_params, 'I_jpaamp', 'Q_jpaamp'
         )
         
-        # Calculate 2Q gain from fit (squeezer)
-        results['gain2Q_sqz_dB_fit'] = self._calculate_2q_gain_from_fit(
-            data, amp_fit_params, 'I_jpasqz', 'Q_jpasqz', is_sqz=True
-        )
+        secondary_amp_2q = 0.0
+        if has_jpa2:
+            secondary_amp_2q = self._calculate_2q_gain_from_fit(
+                data2, amp2_fit_params, 'I_jpaamp2', 'Q_jpaamp2'
+            )
+        results['gain2Q_amp_dB_fit'] = max(primary_amp_2q, secondary_amp_2q)
+
+        # Calculate 2Q gain from fits (squeezer)
+        primary_sqz_2q = self._calculate_2q_gain_from_fit(
+            data, sqz_fit_params, 'I_jpasqz', 'Q_jpasqz', is_sqz=True)
+        secondary_sqz_2q = 0.0
+        if has_jpa2:
+            secondary_sqz_2q = self._calculate_2q_gain_from_fit(
+                data2, sqz2_fit_params, 'I_jpasqz2', 'Q_jpasqz2', is_sqz=True
+            )
+        results['gain2Q_sqz_dB_fit'] = max(primary_sqz_2q, secondary_sqz_2q)
         
         return results
     
