@@ -194,12 +194,13 @@ def optimized_fit_jpa(
     # Loop over width_list and choose the most "symmetric" residuals
     # ------------------------------
     best_idx = None
-    bestfit_params = None
+    fit_params = None
     best_mse = None
     symcheck = np.full(T, np.inf)
 
+    valid_fits_count = 0
     for jj, fit_halfwidth in enumerate(width_list):
-        
+                
         start = max(0, peak_idx - fit_halfwidth)
         stop = min(npts - 1, peak_idx + fit_halfwidth)
 
@@ -208,10 +209,10 @@ def optimized_fit_jpa(
         f_slice = freq[start:stop + 1]
 
         try:
-            # CORRECT: Only unpack 4 values from cavity_fit
-            fit_params, mse_val, residuals, peak_idx_slice = cavity_fit(
+            fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
                 "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
             )
+            valid_fits_count += 1
             
         except Exception as e:
             print(f"    [optimized_fit_jpa]   Fit failed: {e}")
@@ -250,14 +251,14 @@ def optimized_fit_jpa(
     f_slice = freq[start:stop + 1]
 
     # CORRECT: Only unpack 4 values from cavity_fit
-    fit_params, mse_val, residuals, peak_idx_slice = cavity_fit(
+    fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
         "tx", i_slice, q_slice, f_slice, init_params, chosen_halfwidth
     )
 
     # Data range is just (start, stop) since we defined it
     data_range = (start, stop)
 
-    return bestfit_params, best_mse, data_range
+    return fit_params, best_mse, data_range
 
 def _smart_initialization(type: Literal['tx', 'rfl'], quick_mag: np.ndarray,
                          freq: np.ndarray, proc_par: Dict[str, Any]) -> Tuple[np.ndarray, int, int]:
