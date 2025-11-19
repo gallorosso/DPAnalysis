@@ -168,7 +168,7 @@ def _plot_single_jpa_profile_fallback(fig: plt.Figure, file_index: int, tx2_file
     except Exception as e:
         print(f"    Could not plot JPA profile for {jpaamp_file.name}: {e}")
 
-def plot_jpa_summary(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any], 
+def plot_jpa_summary_originale(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any], 
                     plot_dir: Path, show: bool = False) -> None:
     """
     Create JPA summary trend plots across all files.
@@ -380,6 +380,194 @@ def _lorentzian_function(f: np.ndarray, params: np.ndarray) -> np.ndarray:
     
     return lorentzian + linear
 
+def plot_jpa_summary(jpa_results: Dict[str, Any], scaleinfo: Dict[str, Any], 
+                    plot_dir: Path, show: bool = False) -> None:
+    """
+    Create JPA summary trend plots across all files with debugging.
+    """
+    plot_dir = _ensure_path(plot_dir)
+    ensure_dir(plot_dir)
+    
+    print("  [plot_jpa_summary] Generating JPA summary plots...")
+    
+    # DEBUG: Check what data we received
+    print(f"  [plot_jpa_summary] jpa_results keys: {list(jpa_results.keys())}")
+    print(f"  [plot_jpa_summary] scaleinfo keys: {list(scaleinfo.keys())}")
+    
+    # Extract data from results with debugging
+    if 'amp_gain_fit' not in jpa_results:
+        print("  [plot_jpa_summary] ERROR: 'amp_gain_fit' not found in jpa_results!")
+        return
+        
+    amp_gain_fit = np.array(jpa_results['amp_gain_fit'])
+    print(f"  [plot_jpa_summary] amp_gain_fit shape: {amp_gain_fit.shape}")
+    print(f"  [plot_jpa_summary] amp_gain_fit sample: {amp_gain_fit[:3] if len(amp_gain_fit) > 0 else 'Empty'}")
+    
+    # Extract frequency from amplifier fits (f0 is parameter index 1)
+    if amp_gain_fit.size > 0:
+        freq_ghz_plot = amp_gain_fit[:, 1]  # f0 from amp fits
+        print(f"  [plot_jpa_summary] Frequency range: {freq_ghz_plot.min():.6f} to {freq_ghz_plot.max():.6f} GHz")
+    else:
+        print("  [plot_jpa_summary] WARNING: amp_gain_fit is empty!")
+        freq_ghz_plot = np.array([])
+    
+    # Extract other arrays with debugging
+    required_arrays = ['JPAbandwidth', 'gain2Q_amp_dB_fit_corr', 'gain2Q_amp2_dB_fit_corr', 
+                      'gain2Q_sqz_dB_fit_corr', 'gain2Q_sqz2_dB_fit_corr']
+    
+    data_arrays = {}
+    for key in required_arrays:
+        if key in jpa_results:
+            arr = np.array(jpa_results[key])
+            data_arrays[key] = arr
+            print(f"  [plot_jpa_summary] {key}: shape {arr.shape}, range {arr.min():.3f} to {arr.max():.3f}")
+        else:
+            print(f"  [plot_jpa_summary] WARNING: {key} not found in jpa_results!")
+            data_arrays[key] = np.array([])
+    
+    # Check for 1Q gains (they might be optional)
+    optional_arrays = ['gain1Q_amp_dB', 'gain1Q_amp_dB2', 'gain1Q_sqz_dB', 'gain1Q_sqz_dB2']
+    for key in optional_arrays:
+        if key in jpa_results:
+            arr = np.array(jpa_results[key])
+            data_arrays[key] = arr
+            print(f"  [plot_jpa_summary] {key}: shape {arr.shape}, range {arr.min():.3f} to {arr.max():.3f}")
+        else:
+            print(f"  [plot_jpa_summary] NOTE: {key} not found, using zeros")
+            data_arrays[key] = np.zeros_like(freq_ghz_plot) if freq_ghz_plot.size > 0 else np.array([])
+    
+    # Check if we have any non-zero data to plot
+    if freq_ghz_plot.size == 0:
+        print("  [plot_jpa_summary] ERROR: No frequency data to plot!")
+        return
+        
+    non_zero_data = False
+    for key, arr in data_arrays.items():
+        if arr.size > 0 and np.any(arr != 0):
+            non_zero_data = True
+            break
+    
+    if not non_zero_data:
+        print("  [plot_jpa_summary] WARNING: All data arrays are zero!")
+    
+    # Create the plot
+    print("  [plot_jpa_summary] Creating figure...")
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10), constrained_layout=True)
+    
+    # Subplot (1,1): AMP Gain (1Q and 2Q)
+    ax = axes[0, 0]
+    print(f"  [plot_jpa_summary] Plotting subplot 1,1...")
+    
+    if data_arrays['gain2Q_amp_dB_fit_corr'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain2Q_amp_dB_fit_corr'], '.', markersize=8, label='2Q(1st)')
+        print(f"  [plot_jpa_summary]   Plotted gain2Q_amp_dB_fit_corr: {len(data_arrays['gain2Q_amp_dB_fit_corr'])} points")
+    
+    if data_arrays['gain2Q_amp2_dB_fit_corr'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain2Q_amp2_dB_fit_corr'], '.', markersize=8, label='2Q(2nd)')
+        print(f"  [plot_jpa_summary]   Plotted gain2Q_amp2_dB_fit_corr: {len(data_arrays['gain2Q_amp2_dB_fit_corr'])} points")
+    
+    if data_arrays['gain1Q_amp_dB'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain1Q_amp_dB'], '.', markersize=8, label='1Q(1st)')
+        print(f"  [plot_jpa_summary]   Plotted gain1Q_amp_dB: {len(data_arrays['gain1Q_amp_dB'])} points")
+    
+    if data_arrays['gain1Q_amp_dB2'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain1Q_amp_dB2'], '.', markersize=8, label='1Q(2nd)')
+        print(f"  [plot_jpa_summary]   Plotted gain1Q_amp_dB2: {len(data_arrays['gain1Q_amp_dB2'])} points")
+    
+    ax.set_ylabel('Gain [dB]')
+    ax.set_xlabel(r'TM$_{010}$ Frequency [GHz]')
+    ax.set_title('AMP Gain (1Q and 2Q)')
+    ax.legend(ncol=2, fontsize=9)
+    
+    # Continue with other subplots similarly...
+    # Subplot (1,2): SQZ Gain (1Q and 2Q)
+    ax = axes[0, 1]
+    print(f"  [plot_jpa_summary] Plotting subplot 1,2...")
+    
+    if data_arrays['gain2Q_sqz_dB_fit_corr'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain2Q_sqz_dB_fit_corr'], '.', markersize=8, label='2Q(1st)')
+    
+    if data_arrays['gain2Q_sqz2_dB_fit_corr'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain2Q_sqz2_dB_fit_corr'], '.', markersize=8, label='2Q(2nd)')
+    
+    if data_arrays['gain1Q_sqz_dB'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain1Q_sqz_dB'], '.', markersize=8, label='1Q(1st)')
+    
+    if data_arrays['gain1Q_sqz_dB2'].size > 0:
+        ax.plot(freq_ghz_plot, data_arrays['gain1Q_sqz_dB2'], '.', markersize=8, label='1Q(2nd)')
+    
+    ax.set_ylabel('Gain [dB]')
+    ax.set_xlabel(r'TM$_{010}$ Frequency [GHz]')
+    ax.set_title('SQZ Gain (1Q and 2Q)')
+    ax.legend(ncol=2, fontsize=9)
+    
+    # Subplot (1,3): JPA Bandwidth
+    ax = axes[0, 2]
+    print(f"  [plot_jpa_summary] Plotting subplot 1,3...")
+    
+    if 'JPAbandwidth' in jpa_results:
+        bandwidth = np.array(jpa_results['JPAbandwidth'])
+        ax.plot(freq_ghz_plot, bandwidth, '.', markersize=8)
+        print(f"  [plot_jpa_summary]   Bandwidth range: {bandwidth.min():.0f} to {bandwidth.max():.0f} Hz")
+    
+    ax.set_ylabel('JPA Bandwidth (AMP) [Hz]')
+    ax.set_xlabel(r'TM$_{010}$ Frequency [GHz]')
+    ax.set_title('Bandwidth of amplifier JPA')
+    
+    # ... continue with remaining subplots (2,1), (2,2), (2,3)
+    
+    # Subplot (2,1): AMP Gain Differences
+    ax = axes[1, 0]
+    if data_arrays['gain1Q_amp_dB'].size > 0 and data_arrays['gain1Q_amp_dB2'].size > 0:
+        diff_1q = data_arrays['gain1Q_amp_dB'] - data_arrays['gain1Q_amp_dB2']
+        ax.plot(freq_ghz_plot, diff_1q, '.', markersize=8, label='1Q')
+    
+    if data_arrays['gain2Q_amp_dB_fit_corr'].size > 0 and data_arrays['gain2Q_amp2_dB_fit_corr'].size > 0:
+        diff_2q = data_arrays['gain2Q_amp_dB_fit_corr'] - data_arrays['gain2Q_amp2_dB_fit_corr']
+        ax.plot(freq_ghz_plot, diff_2q, '.', markersize=8, label='2Q')
+    
+    ax.set_ylabel('Gain Change [dB]')
+    ax.set_xlabel(r'TM$_{010}$ Frequency [GHz]')
+    ax.set_title('AMP Diff (1st-2nd)')
+    ax.legend()
+    
+    # Subplot (2,2): SQZ Gain Differences
+    ax = axes[1, 1]
+    if data_arrays['gain1Q_sqz_dB'].size > 0 and data_arrays['gain1Q_sqz_dB2'].size > 0:
+        diff_1q = data_arrays['gain1Q_sqz_dB'] - data_arrays['gain1Q_sqz_dB2']
+        ax.plot(freq_ghz_plot, diff_1q, '.', markersize=8, label='1Q')
+    
+    if data_arrays['gain2Q_sqz_dB_fit_corr'].size > 0 and data_arrays['gain2Q_sqz2_dB_fit_corr'].size > 0:
+        diff_2q = data_arrays['gain2Q_sqz_dB_fit_corr'] - data_arrays['gain2Q_sqz2_dB_fit_corr']
+        ax.plot(freq_ghz_plot, diff_2q, '.', markersize=8, label='2Q')
+    
+    ax.set_ylabel('Gain Change (1st-2nd) [dB]')
+    ax.set_xlabel(r'TM$_{010}$ Frequency [GHz]')
+    ax.set_title('SQZ Diff (1st-2nd)')
+    ax.legend()
+    
+    # Subplot (2,3): Difference Between 1Q and 2Q Methods
+    ax = axes[1, 2]
+    if data_arrays['gain1Q_amp_dB'].size > 0 and data_arrays['gain2Q_amp_dB_fit_corr'].size > 0:
+        diff_amp = data_arrays['gain1Q_amp_dB'] - data_arrays['gain2Q_amp_dB_fit_corr']
+        ax.plot(freq_ghz_plot, diff_amp, '.', markersize=8, label='AMP')
+    
+    if data_arrays['gain1Q_sqz_dB'].size > 0 and data_arrays['gain2Q_sqz_dB_fit_corr'].size > 0:
+        diff_sqz = data_arrays['gain1Q_sqz_dB'] - data_arrays['gain2Q_sqz_dB_fit_corr']
+        ax.plot(freq_ghz_plot, diff_sqz, '.', markersize=8, label='SQZ')
+    
+    ax.set_ylabel('(1Q - 2Q) [dB]')
+    ax.set_xlabel(r'TM$_{010}$ Frequency [GHz]')
+    ax.set_title('Difference Between 1Q and 2Q Gain')
+    ax.legend()
+    
+    # Save summary plot
+    print("  [plot_jpa_summary] Saving figure...")
+    save_fig(fig, plot_dir, "jpa_fit_parameters", close=not show)
+    print("  [plot_jpa_summary] Figure saved successfully!")
+    
+    if show:
+        plt.show()
 
 def _ensure_path(path) -> Path:
     """Ensure path is Path object."""

@@ -17,6 +17,8 @@ from src.dark_photon.plotting import plot_tx_summary, plot_rfl_summary
 from src.dark_photon.plotting.styles import apply_default_style
 from src.dark_photon.plotting.jpa import plot_jpa_gain_profiles, plot_jpa_summary
 
+import numpy as np
+
 def main():
     # 1. Load base configuration from YAML file
     options = load_options_from_yaml('config/phaseIIc_config.yaml')
@@ -83,6 +85,13 @@ def main():
         plot_rfl_summary(rfl_res, scaleinfo, plot_dir, show=False)
         # JPA plots - ADD THESE LINES
         plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, file_enum.files, plot_dir, show=False)
+        print(f"  [run_analysis] JPA results keys: {list(jpa_res.scaleinfo_updates.keys())}")
+        for key in ['amp_gain_fit', 'JPAbandwidth', 'gain2Q_amp_dB_fit_corr']:
+            if key in jpa_res.scaleinfo_updates:
+                arr = np.array(jpa_res.scaleinfo_updates[key])
+                print(f"  [run_analysis] {key}: shape {arr.shape}, non-zero: {np.sum(arr != 0)}")
+            else:
+                print(f"  [run_analysis] {key}: NOT FOUND")
         plot_jpa_summary(jpa_res.scaleinfo_updates, scaleinfo, plot_dir, show=False)
 
     
