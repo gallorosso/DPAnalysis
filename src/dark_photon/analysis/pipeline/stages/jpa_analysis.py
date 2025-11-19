@@ -150,7 +150,7 @@ class JPAGainAnalysisStage(PipelineStage):
         
         Converts '/path/to/20220908_0_0_tx2.mat' -> '/path/to/20220908_0_0_'
         """
-        filename = tx2_file.name.replace('tx2', '')
+        filename = tx2_file.name.replace('tx2.mat', '')
         return tx2_file.parent / filename
     
     def _load_jpa_data_files(self, file_base: Path) -> Tuple[Dict, Dict, bool]:

@@ -357,7 +357,7 @@ def _plot_single_jpa_profile(fig: plt.Figure, file_index: int, tx2_file: Path,
 
 def _get_file_base(tx2_file: Path) -> Path:
     """Extract file base name from tx2 file path."""
-    filename = tx2_file.name.replace('tx2', '')
+    filename = tx2_file.name.replace('tx2.mat', '')
     return tx2_file.parent / filename
 
 

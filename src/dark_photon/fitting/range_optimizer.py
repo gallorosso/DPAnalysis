@@ -199,24 +199,22 @@ def optimized_fit_jpa(
     symcheck = np.full(T, np.inf)
 
     for jj, fit_halfwidth in enumerate(width_list):
-        # MATLAB: itrunc = max(1, maxloc - fit_halfwidth); etc., 1-based.
-        # Here we convert to 0-based.
+        
         start = max(0, peak_idx - fit_halfwidth)
         stop = min(npts - 1, peak_idx + fit_halfwidth)
-        if stop <= start + 3:
-            continue
 
         i_slice = i_data[start:stop + 1]
         q_slice = q_data[start:stop + 1]
         f_slice = freq[start:stop + 1]
 
         try:
-            # cavity_fit returns bestfit_params and mse plus extra info;
-            # we only need the first two for this logic.
-            fit_params, mse_val, residuals, _subset_start, _subset_end, *_ = cavity_fit(
-                "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth, proc_par
+            # CORRECT: Only unpack 4 values from cavity_fit
+            fit_params, mse_val, residuals, peak_idx_slice = cavity_fit(
+                "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
             )
-        except Exception:
+            
+        except Exception as e:
+            print(f"    [optimized_fit_jpa]   Fit failed: {e}")
             continue
 
         # Compute a crude "symmetry" measure of the residuals.
@@ -235,7 +233,7 @@ def optimized_fit_jpa(
     # Pick width that minimizes symcheck
     valid = np.isfinite(symcheck)
     if not np.any(valid):
-        raise RuntimeError("optimized_fit_jpa: all candidate fits failed")
+        raise RuntimeError("[optimized_fit_jpa]: all candidate fits failed")
 
     best_idx = int(np.argmin(symcheck[valid]))
     # Map best_idx back to original index in width_list
@@ -251,17 +249,13 @@ def optimized_fit_jpa(
     q_slice = q_data[start:stop + 1]
     f_slice = freq[start:stop + 1]
 
-    fit_params, mse_val, residuals, subset_start_ind, subset_end_ind, *_ = cavity_fit(
-        "tx", i_slice, q_slice, f_slice, init_params, chosen_halfwidth, proc_par
+    # CORRECT: Only unpack 4 values from cavity_fit
+    fit_params, mse_val, residuals, peak_idx_slice = cavity_fit(
+        "tx", i_slice, q_slice, f_slice, init_params, chosen_halfwidth
     )
 
-    # Convert subset indices (local to slice) back to global 0-based indices
-    global_start = start + int(subset_start_ind)
-    global_end = start + int(subset_end_ind)
-
-    bestfit_params = fit_params
-    best_mse = float(mse_val)
-    data_range = (global_start, global_end)
+    # Data range is just (start, stop) since we defined it
+    data_range = (start, stop)
 
     return bestfit_params, best_mse, data_range
 
