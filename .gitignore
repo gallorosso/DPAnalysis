@@ -1,3 +1,4 @@
+src/dark_photon/__pycache__/
 src/dark_photon/analysis/__pycache__/
 src/dark_photon/analysis/pipeline/__pycache__/
 src/dark_photon/analysis/pipeline/stages/__pycache__/
