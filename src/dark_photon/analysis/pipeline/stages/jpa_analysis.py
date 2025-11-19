@@ -107,6 +107,8 @@ class JPAGainAnalysisStage(PipelineStage):
             'Q2gain': q2_gain.tolist(),
             'amp_gain_fit': amp_gain_fit.tolist(),
             'sqz_gain_fit': sqz_gain_fit.tolist(),
+            'gain1Q_amp_dB': gain1Q_amp_dB.tolist(),
+            'gain1Q_sqz_dB': gain1Q_sqz_dB.tolist(),
             'gain2Q_amp_dB_fit': gain2Q_amp_dB_fit.tolist(),
             'gain2Q_sqz_dB_fit': gain2Q_sqz_dB_fit.tolist(),
             'gain2Q_amp_dB_fit_corr': gain2Q_amp_dB_fit_corr.tolist(),
@@ -168,12 +170,6 @@ class JPAGainAnalysisStage(PipelineStage):
             raise FileNotFoundError(f"JPA data file not found: {jpaamp_file}")
         
         data = scipy.io.loadmat(str(jpaamp_file))
-        print("==== DEBUG JPA VALUES ====")
-        print("File:", jpaamp_file)
-        print("gain_amp_pow raw:", data.get("gain_amp_pow"))
-        print("gain_sq_pow raw:", data.get("gain_sq_pow"))
-        print("amp_sqz_dB raw:", data.get("sq_dB"))
-        print("==========================")
         
         # Load secondary JPA data if available
         has_jpa2 = False
