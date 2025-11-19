@@ -475,22 +475,28 @@ class JPAGainAnalysisStage(PipelineStage):
         
         return results
     
-    def _extract_1q_gain(self, data: Dict, gain_key: str) -> float:
-        """
-        Extract 1Q gain measurement from data.
+    # def _extract_1q_gain(self, data: Dict, gain_key: str) -> float:
+    #     """
+    #     Extract 1Q gain measurement from data.
         
-        Equivalent to MATLAB: gain1Q_amp_dB(i) = pow2db(data.gain_amp_pow)
-        """
-        if gain_key in data:
-            gain_power = data[gain_key]
-            if hasattr(gain_power, '__len__') and len(gain_power) > 0:
-                gain_value = gain_power[0] if hasattr(gain_power, '__len__') else gain_power
-            else:
-                gain_value = gain_power
+    #     Equivalent to MATLAB: gain1Q_amp_dB(i) = pow2db(data.gain_amp_pow)
+    #     """
+    #     if gain_key in data:
+    #         gain_power = data[gain_key]
+    #         if hasattr(gain_power, '__len__') and len(gain_power) > 0:
+    #             gain_value = gain_power[0] if hasattr(gain_power, '__len__') else gain_power
+    #         else:
+    #             gain_value = gain_power
                 
-            if gain_value > 0:
-                return 10.0 * np.log10(gain_value)  # pow2db equivalent
-        return 0.0
+    #         if gain_value > 0:
+    #             return 10.0 * np.log10(gain_value)  # pow2db equivalent
+    #     return 0.0
+
+    def _extract_1q_gain(self, data, key):
+        if key not in data:
+            return 0.0
+        val = float(np.squeeze(data[key]))
+        return 10*np.log10(val) if val > 0 else 0.0
     
     def _calculate_2q_gain_from_fit(self, data: Dict, fit_params: np.ndarray, 
                                   i_key: str, q_key: str, is_sqz: bool = False) -> float:
