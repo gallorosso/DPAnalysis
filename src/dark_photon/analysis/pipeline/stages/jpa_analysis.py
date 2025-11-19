@@ -452,9 +452,8 @@ class JPAGainAnalysisStage(PipelineStage):
         results['gain1Q_amp_dB'] = self._extract_1q_gain(data, 'gain_amp_pow')
         results['gain1Q_sqz_dB'] = self._extract_1q_gain(data, 'gain_sq_pow')
         if has_jpa2:
-            # Second JPA measurement uses the same field names in the second file.
-            results['gain1Q_amp_dB2'] = self._extract_1q_gain(data2, 'gain_amp_pow')
-            results['gain1Q_sqz_dB2'] = self._extract_1q_gain(data2, 'gain_sq_pow')
+            results['gain1Q_amp_dB2'] = self._extract_1q_gain(data2, 'gain_amp_pow2')
+            results['gain1Q_sqz_dB2'] = self._extract_1q_gain(data2, 'gain_sq_pow2')
         else:
             results['gain1Q_amp_dB2'] = 0.0
             results['gain1Q_sqz_dB2'] = 0.0
