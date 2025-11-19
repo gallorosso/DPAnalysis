@@ -50,6 +50,8 @@ class JPAGainAnalysisStage(PipelineStage):
         gain2Q_sqz_dB_fit = np.zeros(num_files)
         gain1Q_amp_dB = np.zeros(num_files)
         gain1Q_sqz_dB = np.zeros(num_files)
+        gain1Q_amp_dB2 = np.zeros(num_files)
+        gain1Q_sqz_dB2 = np.zeros(num_files)
         
         gain2Q_amp_dB_fit_corr = np.zeros(num_files)
         gain2Q_amp2_dB_fit_corr = np.zeros(num_files)
@@ -83,6 +85,8 @@ class JPAGainAnalysisStage(PipelineStage):
                     gain2Q_sqz_dB_fit[i] = jpa_results['gain2Q_sqz_dB_fit']
                     gain1Q_amp_dB[i] = jpa_results['gain1Q_amp_dB']
                     gain1Q_sqz_dB[i] = jpa_results['gain1Q_sqz_dB']
+                    gain1Q_amp_dB2[i] = jpa_results['gain1Q_amp_dB2']
+                    gain1Q_sqz_dB2[i] = jpa_results['gain1Q_sqz_dB2']
                     gain2Q_amp_dB_fit_corr[i] = jpa_results['gain2Q_amp_dB_fit_corr']
                     gain2Q_amp2_dB_fit_corr[i] = jpa_results['gain2Q_amp2_dB_fit_corr']
                     gain2Q_sqz_dB_fit_corr[i] = jpa_results['gain2Q_sqz_dB_fit_corr']
@@ -109,6 +113,8 @@ class JPAGainAnalysisStage(PipelineStage):
             'sqz_gain_fit': sqz_gain_fit.tolist(),
             'gain1Q_amp_dB': gain1Q_amp_dB.tolist(),
             'gain1Q_sqz_dB': gain1Q_sqz_dB.tolist(),
+            'gain1Q_amp_dB2': gain1Q_amp_dB2.tolist(),
+            'gain1Q_sqz_dB2': gain1Q_sqz_dB2.tolist(),
             'gain2Q_amp_dB_fit': gain2Q_amp_dB_fit.tolist(),
             'gain2Q_sqz_dB_fit': gain2Q_sqz_dB_fit.tolist(),
             'gain2Q_amp_dB_fit_corr': gain2Q_amp_dB_fit_corr.tolist(),
@@ -442,15 +448,12 @@ class JPAGainAnalysisStage(PipelineStage):
         
         # Extract 1Q gain measurements (direct from data)
         results['gain1Q_amp_dB'] = self._extract_1q_gain(data, 'gain_amp_pow')
-        if has_jpa2:
-            results['gain1Q_amp_dB2'] = self._extract_1q_gain(data2, 'gain_amp_pow2')
-        else:
-            results['gain1Q_amp_dB2'] = 0.0
-            
         results['gain1Q_sqz_dB'] = self._extract_1q_gain(data, 'gain_sq_pow')
         if has_jpa2:
+            results['gain1Q_amp_dB2'] = self._extract_1q_gain(data2, 'gain_amp_pow2')
             results['gain1Q_sqz_dB2'] = self._extract_1q_gain(data2, 'gain_sq_pow2')
         else:
+            results['gain1Q_amp_dB2'] = 0.0
             results['gain1Q_sqz_dB2'] = 0.0
         
         # Calculate 2Q gain from fits (amplifier)
