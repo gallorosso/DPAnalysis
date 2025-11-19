@@ -126,3 +126,6 @@ src/dark_photon/analysis/pipeline/stages/__pycache__/reflection_analysis.cpython
 src/dark_photon/analysis/pipeline/stages/__pycache__/reflection_analysis.cpython-312.pyc
 src/dark_photon/plotting/__pycache__/jpa.cpython-312.pyc
 src/dark_photon/plotting/__pycache__/jpa.cpython-312.pyc
+src/dark_photon/plotting/__pycache__/jpa.cpython-312.pyc
+src/dark_photon/analysis/pipeline/stages/__pycache__/jpa_analysis.cpython-312.pyc
+src/dark_photon/analysis/pipeline/stages/__pycache__/jpa_analysis.cpython-312.pyc
