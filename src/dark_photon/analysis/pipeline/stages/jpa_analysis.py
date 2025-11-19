@@ -346,8 +346,7 @@ class JPAGainAnalysisStage(PipelineStage):
 
         # Calculate various gain measurements
         gain_results = self._calculate_gain_measurements(
-            data, data2, has_jpa2, amp_fit_params, rfl_params, proc_par
-        )
+            data, data2, has_jpa2, amp_fit_params, sqz_fit_params, amp2_fit_params, sqz2_fit_params)
         
         # Calculate corrected gains with reflection correction
         corrected_gains = self._calculate_corrected_gains(
