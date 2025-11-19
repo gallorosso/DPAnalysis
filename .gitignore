@@ -6,6 +6,7 @@ src/dark_photon/core/__pycache__/
 src/dark_photon/fitting/__pycache__/
 src/dark_photon/io/__pycache__/
 src/dark_photon/processing/__pycache__/
+src/dark_photon/analysis/pipeline/stages/__pycache__/
 db_diagnose_data_files.py
 db_test_fitting.py
 butta.py
@@ -115,6 +116,3 @@ src/dark_photon/analysis/pipeline/stages/__pycache__/reflection_analysis.cpython
 src/dark_photon/plotting/__pycache__/jpa.cpython-312.pyc
 src/dark_photon/plotting/__pycache__/jpa.cpython-312.pyc
 src/dark_photon/plotting/__pycache__/jpa.cpython-312.pyc
-src/dark_photon/analysis/pipeline/stages/__pycache__/jpa_analysis.cpython-312.pyc
-src/dark_photon/analysis/pipeline/stages/__pycache__/jpa_analysis.cpython-312.pyc
-src/dark_photon/analysis/pipeline/stages/__pycache__/jpa_analysis.cpython-312.pyc
