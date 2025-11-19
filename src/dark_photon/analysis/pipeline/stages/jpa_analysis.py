@@ -168,6 +168,12 @@ class JPAGainAnalysisStage(PipelineStage):
             raise FileNotFoundError(f"JPA data file not found: {jpaamp_file}")
         
         data = scipy.io.loadmat(str(jpaamp_file))
+        print("==== DEBUG JPA VALUES ====")
+        print("File:", jpaamp_file)
+        print("gain_amp_pow raw:", data.get("gain_amp_pow"))
+        print("gain_sq_pow raw:", data.get("gain_sq_pow"))
+        print("amp_sqz_dB raw:", data.get("sq_dB"))
+        print("==========================")
         
         # Load secondary JPA data if available
         has_jpa2 = False
