@@ -142,7 +142,7 @@ class JPAGainAnalysisStage(PipelineStage):
         """
         txparams = np.array(scaleinfo.get('txparams', []))
         if len(txparams) == 0:
-            return 0.01  # Default fallback
+            raise ValueError("txparams not found or empty in scaleinfo")
         
         # txparams[:, 1] is f0 (GHz), txparams[:, 2] is Q
         mean_f0 = np.mean(txparams[:, 1])
