@@ -139,24 +139,19 @@ def optimized_fit_jpa(
     # Quick magnitude and basic stats
     # ------------------------------
     amp2 = iq_to_magnitude(i_data, q_data)          # linear power
-    amp_db = 10.0 * np.log10(amp2)                  # pow2db analog
-
-    # Find peak in dB (same as MATLAB: [max_mag,maxloc] = max(quick_mag_db);)
-    peak_idx = int(np.argmax(amp_db))
-
-    # Approximate FWHM in *index* space, using dB values
-    max_val = amp_db[peak_idx]
-    threshold = max_val - 3.0  # 3 dB down
-
-    # Search to the right for half-maximum crossing
-    right = np.where(amp_db[peak_idx:] <= threshold)[0]
-    if len(right) == 0:
-        bw_idx = npts - 1
-    else:
-        bw_idx = peak_idx + int(right[0])
-
-    # Basic width in bins
+    max_val_linear = np.max(amp2)
+    peak_idx = int(np.argmax(amp2))
+    half_power = max_val_linear / 2.0
+    distances = np.abs(amp2 - half_power)
+    
+    # Exclude the peak itself from the search
+    distances[peak_idx] = np.inf
+    
+    # Find the closest point to half-power
+    bw_idx = int(np.argmin(distances))
+    # Calculate bandwidth in bins (like MATLAB)
     jpa_fit_width_sigma = float(proc_par.get("jpa_fit_width_sigma", 5.0))
+
     bw = abs(peak_idx - bw_idx) * jpa_fit_width_sigma
 
     # Bounds on half-width (in bins)
