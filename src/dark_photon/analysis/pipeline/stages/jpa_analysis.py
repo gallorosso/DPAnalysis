@@ -1,9 +1,5 @@
 """
 JPA gain analysis stage for the analysis pipeline.
-Note: unlike MATLAB code, we don't give rfl_corr_idx
-to scaleinfo. Potentially add to excute:
-rfl_corr_idx = compute_rfl_corr_idx(scaleinfo)
-scaleinfo["rfl_corr_idx"] = rfl_corr_idx.tolist()
 """
 
 from pathlib import Path
@@ -313,8 +309,7 @@ class JPAGainAnalysisStage(PipelineStage):
         Core JPA measurement processing (equivalent to main loop body in JPAgainAutorun).
         """
         # Extract reflection parameters for this file
-        rfl_corr_idx = self.compute_rfl_corr_idx(scaleinfo)
-        rfl_params = self._get_reflection_params(scaleinfo, rfl_corr_idx, file_index)
+        rfl_params = self._get_reflection_params(scaleinfo, file_index)
         
         # Fit primary JPA amplifier data
         amp_fit_params, mse, amp_datarange = self._fit_jpa_profile(
@@ -386,57 +381,13 @@ class JPAGainAnalysisStage(PipelineStage):
             'sqz_gain_fit': sqz_fit_params,
         }
     
-    def compute_rfl_corr_idx(self, scaleinfo: Dict[str, Any]) -> np.ndarray:
-        """
-        Build rfl_corr_idx exactly in the MATLAB spirit:
-        for each TM010 frequency (txparams[:,1]) pick the reflection
-        entry whose freq_beta[:,0] is closest.
-
-        Returns:
-            rfl_corr_idx: integer array of shape (N,), 0-based indices into rflparams.
-        """
-        txparams = np.asarray(scaleinfo["txparams"], dtype=float)      # (N, 5)
-        freq_beta = np.asarray(scaleinfo["freq_beta"], dtype=float)    # (N_rfl, 2)
-
-        f_tx = txparams[:, 1]      # TM010 frequencies [GHz]
-        f_rfl = freq_beta[:, 0]    # Reflection frequencies [GHz]
-
-        rfl_corr_idx = np.zeros(len(f_tx), dtype=int)
-
-        max_df_ghz = 5e-4  # example: 500 kHz tolerance
-        for k, f in enumerate(f_tx):
-            if np.isnan(f):
-                rfl_corr_idx[k] = -1
-                continue
-
-            df = np.abs(f_rfl - f)
-            i_best = int(np.argmin(df))
-            if df[i_best] > max_df_ghz:
-                rfl_corr_idx[k] = -1  # "no good reflection match"
-            else:
-                rfl_corr_idx[k] = i_best
-
-                return rfl_corr_idx
-    
-    def _get_reflection_params(
-        self,
-        scaleinfo: Dict[str, Any],
-        rfl_corr_idx: np.ndarray,
-        file_index: int,
-        ) -> Optional[np.ndarray]:
-        """
-        Select the reflection fit parameters for the current JPA dataset,
-        using the rfl_corr_idx mapping (MATLAB's rfl_corr_idx logic).
-        """
-        rflparams = np.asarray(scaleinfo["rflparams"], dtype=float)  # (N_rfl, 5)
-        
-        idx = int(rfl_corr_idx[file_index])
-        if idx < 0 or idx >= rflparams.shape[0]:
-            # No valid mapping; caller can decide to skip reflection correction
-            return None
-        
-        return rflparams[idx, :]
-
+    def _get_reflection_params(self, scaleinfo: Dict[str, Any], file_index: int) -> np.ndarray:
+        """Get reflection parameters for the current file index."""
+        rflparams = scaleinfo.get('rflparams', [])
+        if isinstance(rflparams, list) and len(rflparams) > file_index:
+            return np.array(rflparams[file_index])
+        else:
+            return np.zeros(5)
     
     def _fit_jpa_profile(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
                         proc_par: Dict[str, Any], cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
