@@ -154,22 +154,24 @@ def optimized_fit_jpa(
 
     bw = abs(peak_idx - bw_idx) * jpa_fit_width_sigma
 
-    # Bounds on half-width (in bins)
-    min_halfwidth = max(int(round(npts / 10.0)), 5)
-    max_halfwidth = int(round(npts / 2.0 - 1))
-
-    width = int(round(bw))
-    if width < min_halfwidth:
-        width = min_halfwidth
-    if width > max_halfwidth:
-        width = max_halfwidth
-
-    # Number of widths to try around this guess (MATLAB uses T = 20)
-    T = 20
-    lnbr = T // 2
-    width_list = np.zeros(T, dtype=int)
-    for j in range(T):
-        width_list[j] = width - lnbr + j
+    npts = len(freq)
+    if bw > npts / 2:
+        bw = np.floor(npts / 2) - 1
+    if bw < npts / 10:
+        bw = np.ceil(npts / 10)
+    
+    # Convert to integer half-width
+    min_halfwidth = int(bw)
+    jpa_fit_buffer_bins = int(proc_par.get("jpa_fit_buffer_bins", 5))
+    max_halfwidth = min_halfwidth + jpa_fit_buffer_bins
+    
+    # MATLAB: lnbr = (max_halfwidth - min_halfwidth) + 1;
+    lnbr = (max_halfwidth - min_halfwidth) + 1
+    width_list = np.zeros(lnbr, dtype=int)
+    
+    # MATLAB tests: min_halfwidth, min_halfwidth+1, ..., max_halfwidth
+    for i in range(lnbr):
+        width_list[i] = min_halfwidth + i
 
     # ------------------------------
     # Initial guess for fit parameters (like MATLAB)
