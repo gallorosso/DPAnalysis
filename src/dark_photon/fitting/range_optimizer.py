@@ -201,7 +201,6 @@ def optimized_fit_jpa(
     best_idx = None
     fit_params = None
     best_mse = None
-    symcheck = np.full(T, np.inf)
 
     valid_fits_count = 0
     for jj, fit_halfwidth in enumerate(width_list):
