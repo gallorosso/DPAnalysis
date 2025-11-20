@@ -174,13 +174,21 @@ def optimized_fit_jpa(
         width_list[i] = min_halfwidth + i
 
     # ------------------------------
+    # Bandwidth in GHz. Frequency step = abs(freq[1] - freq[0])
+    bw_freq = bw * abs(freq[1] - freq[0])
+    # Calculate quick magnitude (linear power, like MATLAB)
+    quick_mag = i_data**2 + q_data**2
+    # ------------------------------
     # Initial guess for fit parameters (like MATLAB)
     # ------------------------------
     amp_peak_linear = amp2[peak_idx]
     f0_guess = freq[peak_idx]
-    Q_guess = 1000.0
+    if bw_freq > 0:
+        Q_guess = init_params[1] / bw_freq  # Q = f0 / Δf
+    else:
+        Q_guess = 1000.0  # Fallback
     slope_guess = 0.0
-    offset_guess = np.median(amp2)
+    offset_guess = (quick_mag[0] + quick_mag[-1]) / 2.0
 
     init_params = np.array(
         [amp_peak_linear, f0_guess, Q_guess, slope_guess, offset_guess],
