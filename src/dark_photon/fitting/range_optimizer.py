@@ -223,17 +223,25 @@ def optimized_fit_jpa(
             print(f"    [optimized_fit_jpa]   Fit failed: {e}")
             continue
 
-        # Compute a crude "symmetry" measure of the residuals.
-        # MATLAB code has a small bug where only the last j's value matters;
-        # to stay numerically close, we mimic that behavior.
+        # Compute symmetry measure of the residuals (correct MATLAB logic):
+        #   symlist(j) = (residuals(j) - residuals(end-j+1))^2
+        #   symcheck(i) = mean(symlist)
         res = np.asarray(residuals).flatten()
-        nhalf = min(fit_halfwidth, len(res) // 2)
+        nres = len(res)
+
+        # Use up to fit_halfwidth pairs, but never beyond half the residuals
+        nhalf = min(fit_halfwidth, nres // 2)
         if nhalf <= 0:
             continue
 
-        # Use only the last j pair, like MATLAB's effective behavior
-        j = nhalf - 1
-        sym_val = float((res[j] - res[-(j + 1)]) ** 2)
+        diffs = []
+        for j in range(nhalf):
+            # j in Python is 0-based; MATLAB j=1 maps to index 0
+            left = res[j]
+            right = res[-(j + 1)]
+            diffs.append((left - right) ** 2)
+
+        sym_val = float(np.mean(diffs))
         symcheck[jj] = sym_val
 
     # Pick width that minimizes symcheck
