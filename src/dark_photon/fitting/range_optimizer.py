@@ -127,6 +127,7 @@ def optimized_fit_jpa(
         data_range     : (start_idx, end_idx) indices of the window used
                          (0-based, inclusive on both ends)
     """
+    
     i_data = np.asarray(i_data).flatten()
     q_data = np.asarray(q_data).flatten()
     freq = np.asarray(freq).flatten()
@@ -138,7 +139,8 @@ def optimized_fit_jpa(
     # ------------------------------
     # Quick magnitude and basic stats
     # ------------------------------
-    amp2 = iq_to_magnitude(i_data, q_data)          # linear power
+    
+    amp2 = iq_to_magnitude(i_data, q_data)
     max_val_linear = np.max(amp2)
     peak_idx = int(np.argmax(amp2))
     half_power = max_val_linear / 2.0
@@ -146,6 +148,7 @@ def optimized_fit_jpa(
     
     # Exclude the peak itself from the search
     distances[peak_idx] = np.inf
+    
     
     # Find the closest point to half-power
     bw_idx = int(np.argmin(distances))
@@ -184,7 +187,7 @@ def optimized_fit_jpa(
     amp_peak_linear = amp2[peak_idx]
     f0_guess = freq[peak_idx]
     if bw_freq > 0:
-        Q_guess = init_params[1] / bw_freq  # Q = f0 / Δf
+        Q_guess = f0_guess / bw_freq  # Q = f0 / Δf
     else:
         Q_guess = 1000.0  # Fallback
     slope_guess = 0.0
@@ -252,8 +255,6 @@ def optimized_fit_jpa(
         sym_val = float(np.mean(diffs))
         symcheck[jj] = sym_val
 
-    
-
     if valid_fits_count == 0 or not np.any(np.isfinite(symcheck)):
         raise RuntimeError("optimized_fit_jpa: no successful fits for any width")
 
@@ -274,15 +275,25 @@ def optimized_fit_jpa(
     q_slice = q_data[start:stop + 1]
     f_slice = freq[start:stop + 1]
 
-    # FINAL REFIT at chosen width (correction 5)
-    fit_params_final, mse_final, residuals_final, peak_idx_slice_final = cavity_fit(
+    # # FINAL REFIT at chosen width (correction 5)
+    # fit_params_final, mse_final, residuals_final, peak_idx_slice_final = cavity_fit(
+    #     "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
+    # )
+
+    # # Data range is just (start, stop) since we defined it
+    # data_range = (start, stop)
+
+    # return fit_params_final, mse_final, data_range
+
+    # CORRECT: Only unpack 4 values from cavity_fit
+    fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
         "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
     )
 
     # Data range is just (start, stop) since we defined it
     data_range = (start, stop)
 
-    return fit_params_final, mse_final, data_range
+    return fit_params, best_mse, data_range
 
 
 def _smart_initialization(type: Literal['tx', 'rfl'], quick_mag: np.ndarray,
