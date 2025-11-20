@@ -201,6 +201,11 @@ def optimized_fit_jpa(
     best_idx = None
     fit_params = None
     best_mse = None
+    symcheck = np.full(lnbr, np.inf)
+
+    # NEW: store params and mse for each width
+    param = np.zeros((lnbr, 5), dtype=float)  # 5 fit params: [P_max, f0, Q, slope, offset]
+    msemat = np.full(lnbr, np.inf)
 
     valid_fits_count = 0
     for jj, fit_halfwidth in enumerate(width_list):
@@ -217,6 +222,10 @@ def optimized_fit_jpa(
                 "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
             )
             valid_fits_count += 1
+
+            # NEW: store this fit
+            param[jj, :] = fit_params
+            msemat[jj] = best_mse
             
         except Exception as e:
             print(f"    [optimized_fit_jpa]   Fit failed: {e}")
@@ -243,18 +252,21 @@ def optimized_fit_jpa(
         sym_val = float(np.mean(diffs))
         symcheck[jj] = sym_val
 
-    # Pick width that minimizes symcheck
-    valid = np.isfinite(symcheck)
-    if not np.any(valid):
-        raise RuntimeError("[optimized_fit_jpa]: all candidate fits failed")
+    
 
-    best_idx = int(np.argmin(symcheck[valid]))
-    # Map best_idx back to original index in width_list
-    valid_indices = np.where(valid)[0]
-    chosen_j = valid_indices[best_idx]
-    chosen_halfwidth = width_list[chosen_j]
+    if valid_fits_count == 0 or not np.any(np.isfinite(symcheck)):
+        raise RuntimeError("optimized_fit_jpa: no successful fits for any width")
 
-    # Final fit with chosen_halfwidth
+    # Index of the most symmetric residuals
+    pos = int(np.nanargmin(symcheck))
+    chosen_halfwidth = int(width_list[pos])
+
+    # (Optional but sensible) use the best fit from the loop as initial guess
+    best_init = param[pos, :].copy()
+    if not np.all(np.isfinite(best_init)):
+        best_init = init_params  # fallback
+
+    # Define the final window around the original peak_idx
     start = max(0, peak_idx - chosen_halfwidth)
     stop = min(npts - 1, peak_idx + chosen_halfwidth)
 
@@ -262,15 +274,16 @@ def optimized_fit_jpa(
     q_slice = q_data[start:stop + 1]
     f_slice = freq[start:stop + 1]
 
-    # CORRECT: Only unpack 4 values from cavity_fit
-    fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
-        "tx", i_slice, q_slice, f_slice, init_params, chosen_halfwidth
+    # FINAL REFIT at chosen width (correction 5)
+    fit_params_final, mse_final, residuals_final, peak_idx_slice_final = cavity_fit(
+        "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
     )
 
     # Data range is just (start, stop) since we defined it
     data_range = (start, stop)
 
-    return fit_params, best_mse, data_range
+    return fit_params_final, mse_final, data_range
+
 
 def _smart_initialization(type: Literal['tx', 'rfl'], quick_mag: np.ndarray,
                          freq: np.ndarray, proc_par: Dict[str, Any]) -> Tuple[np.ndarray, int, int]:
