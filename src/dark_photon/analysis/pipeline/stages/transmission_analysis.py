@@ -157,7 +157,7 @@ class TransmissionAnalysisStage(PipelineStage):
         phase_mean, phase_std = 0.0, 0.0
         if sweep_type == 'tx':  # Only extract from first sweep, like MATLAB
             phase_mean, phase_std = self._extract_phase_info(file_path)
-            print(f"    Extracted phase info: mean={phase_mean:.3f}, std={phase_std:.3f}")
+            # print(f"    Extracted phase info: mean={phase_mean:.3f}, std={phase_std:.3f}")
         
         # Save to cache [MODIFIED - include phase info in cache]
         cache_data = {
