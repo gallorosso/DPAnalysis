@@ -177,10 +177,15 @@ def plot_rfl_summary(
     dip1 = rfl_fit_params[:, 0]
     dip2 = rfl_fit_params[:, 5]
 
-    # f_tx - f_rfl (MHz -> kHz already? in MATLAB they did *1e6 so GHz -> kHz)
+    # f_rfl is the AVERAGE! Not what Matlab does.
+    # f_tx = txparams[:, 1]       # GHz, from transmission fit
+    # f_rfl = freq_values[:, 2]   # GHz, avg reflection freq
+    # delta_f_khz = (f_tx - f_rfl) * 1e6  # GHz -> kHz
+
+    # This is what MATLAB does.
     f_tx = txparams[:, 1]       # GHz, from transmission fit
-    f_rfl = freq_values[:, 2]   # GHz, avg reflection freq
-    delta_f_khz = (f_tx - f_rfl) * 1e6  # GHz -> kHz
+    f_rfl = rfl_fit_params[:, 1]   # first sweep f0, like MATLAB
+    delta_f_khz = (f_tx - f_rfl) * 1e6
 
     # Baselines in dB
     rfl_base1_db = np.asarray(tx_scaleinfo["rfl_base1_db"])
