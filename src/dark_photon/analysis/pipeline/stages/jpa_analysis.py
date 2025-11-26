@@ -365,25 +365,29 @@ class JPAGainAnalysisStage(PipelineStage):
             # Squeezer fitting failed, use zeros
             pass
         
-        # Fit secondary measurements if available
+        f0_amp = amp_fit_params[1]  # center frequency from primary run
         amp2_fit_params = np.zeros(5)
         sqz2_fit_params = np.zeros(5)
         if has_jpa2:
-            try:
-                amp2_fit_params, _, _ = self._fit_jpa_profile(
-                    data2['I_jpaamp2'], data2['Q_jpaamp2'], data2['f_GHz_jpaamp2'],
-                    proc_par, cut_window_ghz
-                )
-            except Exception:
-                pass
-            
-            try:
-                sqz2_fit_params, _, _ = self._fit_jpa_profile(
+            i2_cut, q2_cut, f2_cut = self._apply_jpa_cut_window(
+                data2['I_jpaamp2'], data2['Q_jpaamp2'], data2['f_GHz_jpaamp2'],
+                f_center_ghz=f0_amp,
+                cut_window_ghz=cut_window_ghz,
+            )
+            amp2_fit_params, _, _ = self._fit_jpa_profile(
+                i2_cut, q2_cut, f2_cut,
+                proc_par, cut_window_ghz,
+            )
+            if 'I_jpasqz2' in data2:
+                i_sqz2_cut, q_sqz2_cut, f_sqz2_cut = self._apply_jpa_cut_window(
                     data2['I_jpasqz2'], data2['Q_jpasqz2'], data2['f_GHz_jpasqz2'],
-                    proc_par, cut_window_ghz
+                    f_center_ghz=f0_amp,
+                    cut_window_ghz=cut_window_ghz,
                 )
-            except Exception:
-                pass
+                sqz2_fit_params, _, _ = self._fit_jpa_profile(
+                    i_sqz2_cut, q_sqz2_cut, f_sqz2_cut,
+                    proc_par, cut_window_ghz,
+                )
 
         # Calculate various gain measurements
         gain_results = self._calculate_gain_measurements(
