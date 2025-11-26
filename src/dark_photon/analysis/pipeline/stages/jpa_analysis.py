@@ -302,6 +302,39 @@ class JPAGainAnalysisStage(PipelineStage):
         
         return jpa_results
     
+    def _apply_jpa_cut_window(
+        self,
+        i_data: np.ndarray,
+        q_data: np.ndarray,
+        freq: np.ndarray,
+        f_center_ghz: float,
+        cut_window_ghz: float,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Mirror MATLAB's JPA_cut_window_GHz logic:
+        remove a 2 * cut_window_ghz wide region around f_center_ghz.
+        """
+        i = np.asarray(i_data).flatten()
+        q = np.asarray(q_data).flatten()
+        f = np.asarray(freq).flatten()
+        
+        if len(f) < 3:
+            return i, q, f
+        
+        df = abs(f[1] - f[0])
+        cut_window_idx = int(np.ceil(cut_window_ghz / df))
+        
+        # find index closest to f_center_ghz (MATLAB's findex)
+        findex = int(np.argmin(np.abs(f - f_center_ghz)))
+        
+        start_cut = max(findex - cut_window_idx, 0)
+        stop_cut  = min(findex + cut_window_idx, len(f) - 1)
+        
+        mask = np.ones_like(f, dtype=bool)
+        mask[start_cut:stop_cut + 1] = False
+        
+        return i[mask], q[mask], f[mask]
+    
     def _process_jpa_measurement(self, data: Dict, data2: Dict, has_jpa2: bool,
                                scaleinfo: Dict[str, Any], proc_par: Dict[str, Any],
                                cut_window_ghz: float, file_index: int) -> Dict[str, Any]:
