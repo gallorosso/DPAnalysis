@@ -520,8 +520,9 @@ class JPAGainAnalysisStage(PipelineStage):
             peak_dB = 10.0 * np.log10(resonance_gain)
             baseline_dB = 10.0 * np.log10(baseline_power)
             
-            gain_2q = peak_dB - baseline_dB
-            return max(0.0, gain_2q)  # Ensure non-negative
+            return peak_dB - baseline_dB
+            # return gain_2q
+            #return max(0.0, gain_2q)  # Ensure non-negative
             
         except Exception:
             return 0.0
@@ -623,8 +624,9 @@ class JPAGainAnalysisStage(PipelineStage):
         peak_dB = 10.0 * np.log10(peak_gain)
         
         # Apply reflection correction
-        corrected_gain = peak_dB - rfl_base_dB
-        return max(0.0, corrected_gain)
+        return (peak_dB - rfl_base_dB)
+        # For some reason this was around:
+        # return max(0.0, corrected_gain)
     
     def _apply_reflection_correction_to_spectrum(self, i_data: np.ndarray, q_data: np.ndarray,
                                                freq: np.ndarray, rfl_params: np.ndarray,
