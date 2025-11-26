@@ -462,23 +462,14 @@ class JPAGainAnalysisStage(PipelineStage):
         primary_amp_2q = self._calculate_2q_gain_from_fit(
             data, amp_fit_params, 'I_jpaamp', 'Q_jpaamp'
         )
-        
-        secondary_amp_2q = 0.0
-        if has_jpa2:
-            secondary_amp_2q = self._calculate_2q_gain_from_fit(
-                data2, amp2_fit_params, 'I_jpaamp2', 'Q_jpaamp2'
-            )
-        results['gain2Q_amp_dB_fit'] = max(primary_amp_2q, secondary_amp_2q)
+        # MATLAB: only primary is used for gain2Q_amp_dB_fit
+        results['gain2Q_amp_dB_fit'] = primary_amp_2q
 
         # Calculate 2Q gain from fits (squeezer)
         primary_sqz_2q = self._calculate_2q_gain_from_fit(
-            data, sqz_fit_params, 'I_jpasqz', 'Q_jpasqz', is_sqz=True)
-        secondary_sqz_2q = 0.0
-        if has_jpa2:
-            secondary_sqz_2q = self._calculate_2q_gain_from_fit(
-                data2, sqz2_fit_params, 'I_jpasqz2', 'Q_jpasqz2', is_sqz=True
-            )
-        results['gain2Q_sqz_dB_fit'] = max(primary_sqz_2q, secondary_sqz_2q)
+            data, sqz_fit_params, 'I_jpasqz', 'Q_jpasqz', is_sqz=True
+        )
+        results['gain2Q_sqz_dB_fit'] = primary_sqz_2q
         
         return results
 
