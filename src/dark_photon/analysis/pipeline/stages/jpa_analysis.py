@@ -508,21 +508,24 @@ class JPAGainAnalysisStage(PipelineStage):
             if n_points < 20:
                 return 0.0
                 
-            # Use first and last 10 points for baseline (like MATLAB)
-            baseline_start = np.mean(i_data[:10]**2 + q_data[:10]**2)
-            baseline_end = np.mean(i_data[-10:]**2 + q_data[-10:]**2)
-            baseline_power = (baseline_start + baseline_end) / 2.0
-            
-            # Calculate peak gain from fit at resonance
-            resonance_gain = self._lorentzian_function(fit_params[1], fit_params)
-            
-            # Convert to dB and subtract baseline
+            power = i_data**2 + q_data**2
+
+            # --- MATLAB-style baseline in dB ---
+            first10_dB = 10.0 * np.log10(power[:10])
+            last10_dB  = 10.0 * np.log10(power[-10:])
+            baseline_dB = 0.5 * (np.mean(first10_dB) + np.mean(last10_dB))
+
+            # Peak from fit at resonance
+            resonance_freq = fit_params[1]
+            resonance_gain = self._lorentzian_function(resonance_freq, fit_params)
+            if resonance_gain <= 0:
+                return 0.0  # same safeguard against nonsense
+
             peak_dB = 10.0 * np.log10(resonance_gain)
-            baseline_dB = 10.0 * np.log10(baseline_power)
-            
-            return peak_dB - baseline_dB
-            # return gain_2q
-            #return max(0.0, gain_2q)  # Ensure non-negative
+
+            gain_2q = peak_dB - baseline_dB
+            # IMPORTANT: don't clamp to >=0; MATLAB allows negative values
+            return float(gain_2q)
             
         except Exception:
             return 0.0
