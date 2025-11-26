@@ -1,7 +1,7 @@
 # Main configuration for Phase IIc analysis
 
 # Data directories
-input_dir: "/Users/andrea.gallorosso/Documents/Attivi/HAYSTAC analysis"
+input_dir: "/Users/andrea.gallorosso/Documents/Attivi/HAYSTAC analysis/HaystacAnalysis 1.1"
 output_dir: "/Users/andrea.gallorosso/Documents/Attivi/DPAnalysis/output/"
 
 # Phase identification
