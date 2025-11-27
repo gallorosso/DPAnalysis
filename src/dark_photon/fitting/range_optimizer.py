@@ -264,34 +264,35 @@ def optimized_fit_jpa(
 
     # (Optional but sensible) use the best fit from the loop as initial guess
     best_init = param[pos, :].copy()
-    if not np.all(np.isfinite(best_init)):
-        best_init = init_params  # fallback
 
-    # Define the final window around the original peak_idx
+
     start = max(0, peak_idx - chosen_halfwidth)
     stop = min(npts - 1, peak_idx + chosen_halfwidth)
+    data_range = (start, stop)
 
-    i_slice = i_data[start:stop + 1]
-    q_slice = q_data[start:stop + 1]
-    f_slice = freq[start:stop + 1]
+    return best_init, best_mse, data_range
 
-    # # FINAL REFIT at chosen width (correction 5)
-    # fit_params_final, mse_final, residuals_final, peak_idx_slice_final = cavity_fit(
+    # ------------------------------------
+    # COMMENTING OUT 
+    # ------------------------------------
+    # if not np.all(np.isfinite(best_init)):
+    #     best_init = init_params  # fallback
+
+    # # Define the final window around the original peak_idx
+    # start = max(0, peak_idx - chosen_halfwidth)
+    # stop = min(npts - 1, peak_idx + chosen_halfwidth)
+
+    # i_slice = i_data[start:stop + 1]
+    # q_slice = q_data[start:stop + 1]
+    # f_slice = freq[start:stop + 1]
+
+    # # CORRECT: Only unpack 4 values from cavity_fit
+    # fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
     #     "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
     # )
 
     # # Data range is just (start, stop) since we defined it
     # data_range = (start, stop)
-
-    # return fit_params_final, mse_final, data_range
-
-    # CORRECT: Only unpack 4 values from cavity_fit
-    fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
-        "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
-    )
-
-    # Data range is just (start, stop) since we defined it
-    data_range = (start, stop)
 
     return fit_params, best_mse, data_range
 

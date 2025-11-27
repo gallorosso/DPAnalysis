@@ -593,19 +593,11 @@ class JPAGainAnalysisStage(PipelineStage):
         
         # Calculate baseline reflection level
         rfl_base_dB = self._calculate_reflection_baseline(rfl_params)
-
-        if(self.Is_First):
-            print("------------------------------------------------")
-            print('gain2Q_amp_dB_fit_corr')
         
         # Corrected amplifier gains
         corrected['gain2Q_amp_dB_fit_corr'] = self._calculate_corrected_gain(
             amp_fit_params, rfl_params, rfl_base_dB
         )
-
-        if(self.Is_First):
-            print("------------------------------------------------")
-            print('gain2Q_amp2_dB_fit_corr')
         
         corrected['gain2Q_amp2_dB_fit_corr'] = self._calculate_corrected_gain(
             amp2_fit_params, rfl_params, rfl_base_dB
@@ -663,15 +655,13 @@ class JPAGainAnalysisStage(PipelineStage):
             
         peak_dB = 10.0 * np.log10(peak_gain)
 
-        if(self.Is_First):
-            print("------------------------------------------------")
-            print(f"gain2Q_amp_dB_fit_corr: {peak_dB - rfl_base_dB}")
-            print(f"bestfitparams: {fit_params}")
-            print(f"bestfitparams(2): {resonance_freq}")
-            print(f"rfl_base_dB: {rfl_base_dB}")
-            print("------------------------------------------------")
-
-
+        # if(self.Is_First):
+        #     print("------------------------------------------------")
+        #     print(f"gain2Q_amp_dB_fit_corr: {peak_dB - rfl_base_dB}")
+        #     print(f"bestfitparams: {fit_params}")
+        #     print(f"bestfitparams(2): {resonance_freq}")
+        #     print(f"rfl_base_dB: {rfl_base_dB}")
+        #     print("------------------------------------------------")
         
         # Apply reflection correction
         return (peak_dB - rfl_base_dB)
