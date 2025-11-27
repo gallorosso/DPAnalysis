@@ -694,6 +694,71 @@ class JPAGainAnalysisStage(PipelineStage):
         
         return corrected_magnitude
     
+    def _fit_jpa_profile_with_cavity_cut(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
+                                   proc_par: Dict[str, Any], cut_window_ghz: float, 
+                                   cav_freq_ghz: float) -> Tuple[np.ndarray, float, tuple]:
+        """
+        Fit JPA profile after applying cavity cut window.
+        
+        Equivalent to MATLAB's cavity cut logic in JPAgainAutorun.
+        """
+        # Flatten arrays for consistency
+        i_flat = i_data.flatten()
+        q_flat = q_data.flatten()
+        freq_flat = freq.flatten()
+        
+        # Apply cavity cut window (like MATLAB)
+        i_cut, q_cut, freq_cut = self._apply_cavity_cut_window(
+            i_flat, q_flat, freq_flat, cav_freq_ghz, cut_window_ghz
+        )
+        
+        # Use optimized_fit_jpa on the cut data
+        bestfit_params, mse, datarange = optimized_fit_jpa(
+            i_cut, q_cut, freq_cut, proc_par
+        )
+        
+        return bestfit_params, mse, datarange
+
+    def _apply_cavity_cut_window(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
+                            cav_freq_ghz: float, cut_window_ghz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Apply cavity cut window to remove data around cavity frequency.
+        
+        Equivalent to MATLAB: icut=[data.I_jpaamp(1:findex-cut_window_idx) data.I_jpaamp(findex+cut_window_idx:end)];
+        """
+        i_flat = np.asarray(i_data).flatten()
+        q_flat = np.asarray(q_data).flatten()
+        freq_flat = np.asarray(freq).flatten()
+        
+        if len(freq_flat) < 3:
+            return i_flat, q_flat, freq_flat
+        
+        # Calculate frequency step
+        df = abs(freq_flat[1] - freq_flat[0])
+        
+        # Calculate cut window in indices (like MATLAB's cut_window_idx)
+        cut_window_idx = int(np.ceil(cut_window_ghz / df))
+        
+        # Find index closest to cavity frequency (like MATLAB's findex)
+        cav_freq_idx = int(np.argmin(np.abs(freq_flat - cav_freq_ghz)))
+        
+        # Calculate cut boundaries
+        start_cut = max(cav_freq_idx - cut_window_idx, 0)
+        end_cut = min(cav_freq_idx + cut_window_idx, len(freq_flat) - 1)
+        
+        # Create mask to exclude cavity region
+        mask = np.ones(len(freq_flat), dtype=bool)
+        mask[start_cut:end_cut + 1] = False
+        
+        # Apply mask to get cut data (like MATLAB's icut, qcut, fcut)
+        i_cut = i_flat[mask]
+        q_cut = q_flat[mask]
+        freq_cut = freq_flat[mask]
+        
+        print(f"    Cavity cut: removed {cut_window_idx * 2} points around {cav_freq_ghz:.6f} GHz")
+        
+        return i_cut, q_cut, freq_cut
+    
     def _get_default_jpa_results(self) -> Dict[str, Any]:
         """Return default values for failed JPA processing."""
         return {
