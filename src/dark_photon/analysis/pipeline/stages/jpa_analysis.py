@@ -11,7 +11,7 @@ from datetime import datetime
 
 from ..base import PipelineStage, PipelineContext
 from ..results import JPAGainAnalysisResult
-from src.dark_photon.fitting import optimized_fit_jpa, optimized_fit_jpa_strict
+from src.dark_photon.fitting import optimized_fit_jpa
 from src.dark_photon.utils.caching import get_fit_cache_path, load_cached_fit, save_cached_fit
 
 

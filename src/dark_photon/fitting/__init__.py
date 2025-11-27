@@ -12,5 +12,6 @@ __all__ = [
     'iq_to_magnitude',
     'cavity_fit',
     'optimized_fit', 
-    'optimized_fit_jpa'
+    'optimized_fit_jpa',
+    'optimized_fit_jpa_strict'
 ]
