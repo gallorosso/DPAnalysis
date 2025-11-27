@@ -212,26 +212,18 @@ def optimized_fit_jpa(
 
     valid_fits_count = 0
     for jj, fit_halfwidth in enumerate(width_list):
-        
-        # ------------------------------------
-        # COMMENTING OUT 
-        # ------------------------------------
-        # start = max(0, peak_idx - fit_halfwidth)
-        # stop = min(npts - 1, peak_idx + fit_halfwidth)
-        # i_slice = i_data[start:stop + 1]
-        # q_slice = q_data[start:stop + 1]
-        # f_slice = freq[start:stop + 1]
+                
+        start = max(0, peak_idx - fit_halfwidth)
+        stop = min(npts - 1, peak_idx + fit_halfwidth)
+
+        i_slice = i_data[start:stop + 1]
+        q_slice = q_data[start:stop + 1]
+        f_slice = freq[start:stop + 1]
 
         try:
             fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
-                "tx", i_data, q_data, freq, init_params, fit_halfwidth
+                "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
             )
-            # ------------------------------------
-            # COMMENTING OUT 
-            # ------------------------------------
-            # fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
-            #     "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
-            # )
             valid_fits_count += 1
 
             # NEW: store this fit
@@ -272,35 +264,34 @@ def optimized_fit_jpa(
 
     # (Optional but sensible) use the best fit from the loop as initial guess
     best_init = param[pos, :].copy()
+    if not np.all(np.isfinite(best_init)):
+        best_init = init_params  # fallback
 
-
+    # Define the final window around the original peak_idx
     start = max(0, peak_idx - chosen_halfwidth)
     stop = min(npts - 1, peak_idx + chosen_halfwidth)
-    data_range = (start, stop)
 
-    return best_init, best_mse, data_range
+    i_slice = i_data[start:stop + 1]
+    q_slice = q_data[start:stop + 1]
+    f_slice = freq[start:stop + 1]
 
-    # ------------------------------------
-    # COMMENTING OUT 
-    # ------------------------------------
-    # if not np.all(np.isfinite(best_init)):
-    #     best_init = init_params  # fallback
-
-    # # Define the final window around the original peak_idx
-    # start = max(0, peak_idx - chosen_halfwidth)
-    # stop = min(npts - 1, peak_idx + chosen_halfwidth)
-
-    # i_slice = i_data[start:stop + 1]
-    # q_slice = q_data[start:stop + 1]
-    # f_slice = freq[start:stop + 1]
-
-    # # CORRECT: Only unpack 4 values from cavity_fit
-    # fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
+    # # FINAL REFIT at chosen width (correction 5)
+    # fit_params_final, mse_final, residuals_final, peak_idx_slice_final = cavity_fit(
     #     "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
     # )
 
     # # Data range is just (start, stop) since we defined it
     # data_range = (start, stop)
+
+    # return fit_params_final, mse_final, data_range
+
+    # CORRECT: Only unpack 4 values from cavity_fit
+    fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
+        "tx", i_slice, q_slice, f_slice, best_init, chosen_halfwidth
+    )
+
+    # Data range is just (start, stop) since we defined it
+    data_range = (start, stop)
 
     return fit_params, best_mse, data_range
 
@@ -370,140 +361,3 @@ def _smart_initialization(type: Literal['tx', 'rfl'], quick_mag: np.ndarray,
         max_halfwidth = min_halfwidth + proc_par['rfl_fit_buffer_bins']
     
     return init_params, min_halfwidth, max_halfwidth
-
-def optimized_fit_jpa_strict(
-    i_data: np.ndarray,
-    q_data: np.ndarray,
-    freq: np.ndarray,
-    proc_par: Dict[str, float],
-    type: Literal["tx", "rfl"] = "tx",
-) -> Tuple[np.ndarray, float, Tuple[int, int]]:
-    """
-    Strict Python translation of MATLAB optimizedfitjpaJ.m
-
-    Args:
-        i_data, q_data : I/Q arrays for the JPA amplitude measurement
-        freq           : frequency array [GHz]
-        proc_par       : dict-like processing parameters; must provide
-                         'jpa_fit_width_sigma' and 'jpa_fit_buffer_bins'
-        type           : 'tx' or 'rfl' (MATLAB always uses 'tx' for JPA)
-
-    Returns:
-        bestfit_params : array of 5 fit parameters [P_max, f0, Q, slope, offset]
-        mse            : mean squared error of the chosen fit
-        data_range     : (start_idx, end_idx) indices of the window used
-                         (0-based, inclusive on both ends)
-    """
-
-    # Flatten inputs (MATLAB uses row vectors in the end)
-    i_data = np.asarray(i_data).flatten()
-    q_data = np.asarray(q_data).flatten()
-    freq = np.asarray(freq).flatten()
-
-    npts = len(freq)
-    if npts < 5:
-        raise ValueError("optimized_fit_jpa_strict: not enough data points")
-
-    # --- quick_mag = i_in.^2 + q_in.^2; (MATLAB) ---
-    quick_mag = i_data**2 + q_data**2
-
-    # [max_val,max_idx] = max(quick_mag);
-    max_val = float(np.max(quick_mag))
-    max_idx = int(np.argmax(quick_mag))
-
-    # [~,bw_idx] = min(abs(quick_mag - max_val/2.0));
-    half_power = max_val / 2.0
-    bw_idx = int(np.argmin(np.abs(quick_mag - half_power)))
-
-    # bw = abs(max_idx-bw_idx)*proc_par.jpa_fit_width_sigma;
-    jpa_fit_width_sigma = float(proc_par["jpa_fit_width_sigma"])
-    bw = abs(max_idx - bw_idx) * jpa_fit_width_sigma
-
-    # if bw > length(quick_mag)/2, floor(...) - 1
-    if bw > npts / 2.0:
-        bw = np.floor(npts / 2.0) - 1.0
-
-    # if bw < length(quick_mag)/10, ceil(...)
-    if bw < npts / 10.0:
-        bw = np.ceil(npts / 10.0)
-
-    # min_halfwidth=bw; max_halfwidth=bw+proc_par.jpa_fit_buffer_bins;
-    min_halfwidth = int(bw)
-    jpa_fit_buffer_bins = int(proc_par["jpa_fit_buffer_bins"])
-    max_halfwidth = min_halfwidth + jpa_fit_buffer_bins
-
-    # lnbr = (max_halfwidth-min_halfwidth)+1;
-    lnbr = (max_halfwidth - min_halfwidth) + 1
-
-    # param = zeros(lnbr,4);  (MATLAB uses length(bestfit_params); here it's 5)
-    param = np.zeros((lnbr, 5), dtype=float)
-    symcheck = np.zeros(lnbr, dtype=float)
-    msemat = np.zeros(lnbr, dtype=float)
-    peak_indices = np.zeros(lnbr, dtype=int)  # to mirror MATLAB's peak1
-
-    # init_params(1..5)
-    init_params = np.zeros(5, dtype=float)
-    init_params[0] = max_val
-    init_params[1] = float(np.mean(freq))
-    # init_params(3) = init_params(2)/(bw*abs(freq(1)-freq(2)));
-    df = abs(freq[0] - freq[1])
-    init_params[2] = init_params[1] / (bw * df)
-    init_params[3] = 0.0
-    init_params[4] = (quick_mag[0] + quick_mag[-1]) / 2.0
-
-    # for i=1:lnbr
-    for i in range(lnbr):
-        fit_halfwidth = min_halfwidth + i  # min_halfwidth+i-1 in MATLAB (1-based)
-
-        # [bestfit_params, mse0, residuals, peak1] = cavityfitJ(...)
-        bestfit_params, mse0, residuals, peak_idx = cavity_fit(
-            type, i_data, q_data, freq, init_params, fit_halfwidth
-        )
-
-        param[i, :] = bestfit_params
-        msemat[i] = mse0
-        peak_indices[i] = int(peak_idx)
-
-        # if iscolumn(residuals) ... (we already have a flat array)
-        residuals = np.asarray(residuals).flatten()
-        nres = len(residuals)
-
-        # symlist=zeros(1,fit_halfwidth);
-        # for j=1:fit_halfwidth
-        #     symlist(j)=(residuals(j)-residuals(length(residuals)-j+1))^2;
-        # end
-        if nres < fit_halfwidth:
-            # This would be an error in MATLAB too; we mirror the behaviour
-            raise ValueError(
-                f"optimized_fit_jpa_strict: residual length {nres} < fit_halfwidth {fit_halfwidth}"
-            )
-
-        symlist = np.zeros(fit_halfwidth, dtype=float)
-        for j in range(fit_halfwidth):  # j = 0..fit_halfwidth-1
-            symlist[j] = (residuals[j] - residuals[nres - j - 1]) ** 2
-
-        # symcheck(i)=mean(symlist);
-        symcheck[i] = float(np.mean(symlist))
-
-    # [~,pos]=min(symcheck);
-    pos = int(np.argmin(symcheck))
-
-    # bestfitparams=param(pos,:);
-    bestfitparams = param[pos, :].copy()
-
-    # mse=msemat(pos);
-    mse = float(msemat[pos])
-
-    # fit_halfwidth=min_halfwidth+pos-1;
-    fit_halfwidth_sel = min_halfwidth + pos
-
-    # subset_start_ind = max(peak1-fit_halfwidth, 1);
-    # subset_end_ind   = min(peak1+fit_halfwidth, length(freq));
-    # datarange=[subset_start_ind subset_end_ind];
-    peak1 = int(peak_indices[pos])
-    subset_start_ind = max(peak1 - fit_halfwidth_sel, 0)          # 0-based
-    subset_end_ind = min(peak1 + fit_halfwidth_sel, npts - 1)     # 0-based
-
-    datarange = (subset_start_ind, subset_end_ind)
-
-    return bestfitparams, mse, datarange
