@@ -733,7 +733,7 @@ class JPAGainAnalysisStage(PipelineStage):
         freq_flat = freq.flatten()
         
         # Apply cavity cut window (like MATLAB)
-        i_cut, q_cut, freq_cut = self._apply_cavity_cut_window(
+        i_cut, q_cut, freq_cut = self._apply_cavity_cut_window_debug(
             i_flat, q_flat, freq_flat, cav_freq_ghz, cut_window_ghz
         )
         
@@ -783,3 +783,66 @@ class JPAGainAnalysisStage(PipelineStage):
         print(f"    Cavity cut: removed {cut_window_idx * 2} points around {cav_freq_ghz:.6f} GHz")
         
         return i_cut, q_cut, freq_cut
+    
+    def _apply_cavity_cut_window_debug(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
+                                 cav_freq_ghz: float, cut_window_ghz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Apply cavity cut window with maximum debugging.
+        """
+        print(f"    _apply_cavity_cut_window_debug: cav_freq={cav_freq_ghz:.6f}, cut_window={cut_window_ghz:.6f}")
+        
+        i_flat = np.asarray(i_data).flatten()
+        q_flat = np.asarray(q_data).flatten()
+        freq_flat = np.asarray(freq).flatten()
+        
+        print(f"    Input arrays: i={len(i_flat)}, q={len(q_flat)}, f={len(freq_flat)}")
+        
+        if len(freq_flat) < 10:
+            print("    WARNING: Too few points for meaningful cut")
+            return i_flat, q_flat, freq_flat
+        
+        try:
+            # Calculate frequency step
+            df = abs(freq_flat[1] - freq_flat[0])
+            print(f"    Frequency step: {df:.8f} GHz")
+            
+            # Calculate cut window in indices
+            if df == 0:
+                print("    ERROR: Zero frequency step")
+                return i_flat, q_flat, freq_flat
+                
+            cut_window_idx = int(np.ceil(cut_window_ghz / df))
+            print(f"    Cut window: {cut_window_ghz:.6f} GHz / {df:.8f} GHz = {cut_window_idx} indices")
+            
+            # Find index closest to cavity frequency
+            cav_freq_idx = int(np.argmin(np.abs(freq_flat - cav_freq_ghz)))
+            actual_cav_freq = freq_flat[cav_freq_idx]
+            print(f"    Cavity index: {cav_freq_idx}, actual freq: {actual_cav_freq:.6f} GHz")
+            
+            # Calculate cut boundaries
+            start_cut = max(cav_freq_idx - cut_window_idx, 0)
+            end_cut = min(cav_freq_idx + cut_window_idx, len(freq_flat) - 1)
+            print(f"    Cut region: indices {start_cut} to {end_cut}")
+            
+            if start_cut >= end_cut:
+                print("    WARNING: Invalid cut region, returning full data")
+                return i_flat, q_flat, freq_flat
+            
+            # Create mask
+            mask = np.ones(len(freq_flat), dtype=bool)
+            mask[start_cut:end_cut + 1] = False
+            
+            # Apply mask
+            i_cut = i_flat[mask]
+            q_cut = q_flat[mask]
+            freq_cut = freq_flat[mask]
+            
+            print(f"    Cut result: {len(i_flat)} -> {len(i_cut)} points")
+            
+            return i_cut, q_cut, freq_cut
+            
+        except Exception as e:
+            print(f"    ERROR in _apply_cavity_cut_window_debug: {e}")
+            import traceback
+            traceback.print_exc()
+            return i_flat, q_flat, freq_flat
