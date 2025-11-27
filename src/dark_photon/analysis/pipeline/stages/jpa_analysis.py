@@ -271,14 +271,19 @@ class JPAGainAnalysisStage(PipelineStage):
             return self._get_default_jpa_results()
     
     def _process_jpa_measurement_with_cache(self, data: Dict, data2: Dict, has_jpa2: bool,
-                                          file_base: Path, scaleinfo: Dict[str, Any],
-                                          proc_par: Dict[str, Any], cut_window_ghz: float,
-                                          file_index: int, cache_dir: Path) -> Dict[str, Any]:
+                                      file_base: Path, scaleinfo: Dict[str, Any],
+                                      proc_par: Dict[str, Any], cut_window_ghz: float,
+                                      file_index: int, cache_dir: Path) -> Dict[str, Any]:
         """
-        Process JPA measurement with caching support.
+        Process JPA measurement with caching support, including cavity cut.
         """
-        # Generate cache file path
-        cache_file = cache_dir / f"{file_base.name}_jpa_fit.pkl"
+        # Get cavity frequency for this file
+        tx_params = np.array(scaleinfo['txparams'][file_index])
+        cav_freq_ghz = tx_params[1]
+        
+        # Generate cache file path including cavity frequency in key
+        cache_key = f"{file_base.name}_cav{cav_freq_ghz:.6f}_jpa_fit"
+        cache_file = cache_dir / f"{cache_key}.pkl"
         
         # Try to load from cache
         if proc_par.get('load_fits', True):
@@ -287,7 +292,7 @@ class JPAGainAnalysisStage(PipelineStage):
                 print(f"    Loaded cached JPA fit: {file_base.name}")
                 return cached_data['jpa_results']
         
-        # Process normally if cache miss
+        # Process normally if cache miss (now with cavity cut)
         jpa_results = self._process_jpa_measurement(
             data, data2, has_jpa2, scaleinfo, proc_par, cut_window_ghz, file_index
         )
@@ -296,6 +301,8 @@ class JPAGainAnalysisStage(PipelineStage):
         cache_data = {
             'jpa_results': jpa_results,
             'jpa_fit_width_sigma': proc_par.get('jpa_fit_width_sigma'),
+            'cavity_freq_ghz': cav_freq_ghz,  # Store cavity freq for validation
+            'cut_window_ghz': cut_window_ghz,  # Store cut window for validation
             'timestamp': datetime.now().isoformat()
         }
         save_cached_fit(cache_file, cache_data)
