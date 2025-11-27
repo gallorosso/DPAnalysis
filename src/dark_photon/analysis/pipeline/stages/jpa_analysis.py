@@ -81,8 +81,8 @@ class JPAGainAnalysisStage(PipelineStage):
         processed_count = 0
         
         for i, tx2_file in enumerate(files):
-            if i < 40:
-                continue
+            # if i < 40:
+            #     continue
             print(f"PROCESSIAMO {i} --------------------------------")
             try:
                 # Process this JPA dataset
