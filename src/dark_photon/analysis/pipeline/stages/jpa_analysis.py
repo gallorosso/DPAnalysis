@@ -76,7 +76,7 @@ class JPAGainAnalysisStage(PipelineStage):
                 # Process this JPA dataset
                 file_base = self._get_file_base(tx2_file)
                 jpa_results = self._process_jpa_dataset(
-                    file_base, scaleinfo, context.proc_par, context, i
+                    file_base, scaleinfo, context.run_props.processing, context, i
                 )
                 
                 if jpa_results:
@@ -593,15 +593,25 @@ class JPAGainAnalysisStage(PipelineStage):
         
         # Calculate baseline reflection level
         rfl_base_dB = self._calculate_reflection_baseline(rfl_params)
+
+        if(self.Is_First):
+            print("------------------------------------------------")
+            print('gain2Q_amp_dB_fit_corr')
         
         # Corrected amplifier gains
         corrected['gain2Q_amp_dB_fit_corr'] = self._calculate_corrected_gain(
             amp_fit_params, rfl_params, rfl_base_dB
         )
+
+        if(self.Is_First):
+            print("------------------------------------------------")
+            print('gain2Q_amp2_dB_fit_corr')
         
         corrected['gain2Q_amp2_dB_fit_corr'] = self._calculate_corrected_gain(
             amp2_fit_params, rfl_params, rfl_base_dB
         ) if has_jpa2 else 0.0
+
+        self.Is_First = False
         
         # Corrected squeezer gains
         corrected['gain2Q_sqz_dB_fit_corr'] = self._calculate_corrected_gain(
@@ -652,6 +662,16 @@ class JPAGainAnalysisStage(PipelineStage):
             return 0.0
             
         peak_dB = 10.0 * np.log10(peak_gain)
+
+        if(self.Is_First):
+            print("------------------------------------------------")
+            print(f"gain2Q_amp_dB_fit_corr: {peak_dB - rfl_base_dB}")
+            print(f"bestfitparams: {fit_params}")
+            print(f"bestfitparams(2): {resonance_freq}")
+            print(f"rfl_base_dB: {rfl_base_dB}")
+            print("------------------------------------------------")
+
+
         
         # Apply reflection correction
         return (peak_dB - rfl_base_dB)
