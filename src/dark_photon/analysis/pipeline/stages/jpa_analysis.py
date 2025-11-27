@@ -423,18 +423,42 @@ class JPAGainAnalysisStage(PipelineStage):
             return np.zeros(5)
     
     def _fit_jpa_profile(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                        proc_par: Dict[str, Any], cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
-        """
-        Fit JPA profile using optimized_fit_jpa.
-        """
-        # Flatten arrays for consistency
+                    proc_par: Dict[str, Any], cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
+        # Flatten arrays
         i_flat = i_data.flatten()
         q_flat = q_data.flatten()
         freq_flat = freq.flatten()
         
-        # Use the existing optimized_fit_jpa function
+        # Apply cavity cut window (MATLAB equivalent)
+        if cut_window_ghz > 0:
+            # Get initial parameters to find cavity resonance (like MATLAB)
+            from src.dark_photon.fitting import optimized_fit_jpa
+            init_params, _, _ = optimized_fit_jpa(i_flat, q_flat, freq_flat, proc_par)
+            
+            # Calculate cut window indices
+            df = abs(freq_flat[1] - freq_flat[0])
+            cut_window_idx = int(np.ceil(cut_window_ghz / df))
+            
+            # Find index closest to cavity resonance
+            cavity_freq = init_params[1]  # f0 from initial fit
+            findex = int(np.argmin(np.abs(freq_flat - cavity_freq)))
+            
+            # Apply cut (remove cavity resonance region)
+            mask = np.ones_like(freq_flat, dtype=bool)
+            start_cut = max(0, findex - cut_window_idx)
+            end_cut = min(len(freq_flat) - 1, findex + cut_window_idx)
+            mask[start_cut:end_cut + 1] = False
+            
+            i_cut = i_flat[mask]
+            q_cut = q_flat[mask]
+            freq_cut = freq_flat[mask]
+        else:
+            # No cut window applied
+            i_cut, q_cut, freq_cut = i_flat, q_flat, freq_flat
+        
+        # Use optimized_fit_jpa on CUT data (like MATLAB)
         bestfit_params, mse, datarange = optimized_fit_jpa(
-            i_flat, q_flat, freq_flat, proc_par
+            i_cut, q_cut, freq_cut, proc_par
         )
         
         return bestfit_params, mse, datarange
