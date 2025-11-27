@@ -336,51 +336,55 @@ class JPAGainAnalysisStage(PipelineStage):
         return i[mask], q[mask], f[mask]
     
     def _process_jpa_measurement(self, data: Dict, data2: Dict, has_jpa2: bool,
-                               scaleinfo: Dict[str, Any], proc_par: Dict[str, Any],
-                               cut_window_ghz: float, file_index: int) -> Dict[str, Any]:
+                           scaleinfo: Dict[str, Any], proc_par: Dict[str, Any],
+                           cut_window_ghz: float, file_index: int) -> Dict[str, Any]:
         """
-        Core JPA measurement processing (equivalent to main loop body in JPAgainAutorun).
+        Core JPA measurement processing with cavity cut window.
         """
         # Extract reflection parameters for this file
         rfl_params = self._get_reflection_params(scaleinfo, file_index)
         
-        # Fit primary JPA amplifier data
-        amp_fit_params, mse, amp_datarange = self._fit_jpa_profile(
+        # Get initial cavity frequency estimate from transmission parameters
+        tx_params = np.array(scaleinfo['txparams'][file_index])
+        cav_freq_ghz = tx_params[1]  # f0 from transmission fit
+        
+        # Fit primary JPA amplifier data WITH CAVITY CUT
+        amp_fit_params, mse, amp_datarange = self._fit_jpa_profile_with_cavity_cut(
             data['I_jpaamp'], data['Q_jpaamp'], data['f_GHz_jpaamp'], 
-            proc_par, cut_window_ghz
+            proc_par, cut_window_ghz, cav_freq_ghz
         )
         
         # Calculate bandwidth and basic gains
         bandwidth = self._calculate_bandwidth(amp_fit_params)
         q2_gain = self._calculate_q2_gain(bandwidth, proc_par.get('JPA_gbw_prod', 8.15e7))
         
-        # Fit squeezer data if available
+        # Fit squeezer data if available WITH CAVITY CUT
         sqz_fit_params = np.zeros(5)
         try:
-            sqz_fit_params, _, _ = self._fit_jpa_profile(
+            sqz_fit_params, _, _ = self._fit_jpa_profile_with_cavity_cut(
                 data['I_jpasqz'], data['Q_jpasqz'], data['f_GHz_jpasqz'],
-                proc_par, cut_window_ghz
+                proc_par, cut_window_ghz, cav_freq_ghz
             )
         except Exception:
             # Squeezer fitting failed, use zeros
             pass
         
-        # Fit secondary measurements if available
+        # Fit secondary measurements if available WITH CAVITY CUT
         amp2_fit_params = np.zeros(5)
         sqz2_fit_params = np.zeros(5)
         if has_jpa2:
             try:
-                amp2_fit_params, _, _ = self._fit_jpa_profile(
+                amp2_fit_params, _, _ = self._fit_jpa_profile_with_cavity_cut(
                     data2['I_jpaamp2'], data2['Q_jpaamp2'], data2['f_GHz_jpaamp2'],
-                    proc_par, cut_window_ghz
+                    proc_par, cut_window_ghz, cav_freq_ghz
                 )
             except Exception:
                 pass
             
             try:
-                sqz2_fit_params, _, _ = self._fit_jpa_profile(
+                sqz2_fit_params, _, _ = self._fit_jpa_profile_with_cavity_cut(
                     data2['I_jpasqz2'], data2['Q_jpasqz2'], data2['f_GHz_jpasqz2'],
-                    proc_par, cut_window_ghz
+                    proc_par, cut_window_ghz, cav_freq_ghz
                 )
             except Exception:
                 pass
