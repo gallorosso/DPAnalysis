@@ -21,6 +21,9 @@ class JPAGainAnalysisStage(PipelineStage):
     
     Python implementation of JPAgainAutorun (analysis only, no plotting).
     """
+
+    def __init__(self):
+        self.Is_First = True
     
     def execute(self, context: PipelineContext, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -73,7 +76,7 @@ class JPAGainAnalysisStage(PipelineStage):
                 # Process this JPA dataset
                 file_base = self._get_file_base(tx2_file)
                 jpa_results = self._process_jpa_dataset(
-                    file_base, scaleinfo, context.run_props.processing, context, i
+                    file_base, scaleinfo, context.proc_par, context, i
                 )
                 
                 if jpa_results:
