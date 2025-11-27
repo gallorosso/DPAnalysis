@@ -11,7 +11,7 @@ from datetime import datetime
 
 from ..base import PipelineStage, PipelineContext
 from ..results import JPAGainAnalysisResult
-from src.dark_photon.fitting import optimized_fit_jpa
+from src.dark_photon.fitting import optimized_fit_jpa, optimized_fit_jpa_strict
 from src.dark_photon.utils.caching import get_fit_cache_path, load_cached_fit, save_cached_fit
 
 
@@ -436,7 +436,7 @@ class JPAGainAnalysisStage(PipelineStage):
         freq_flat = freq.flatten()
         
         # Use the existing optimized_fit_jpa function
-        bestfit_params, mse, datarange = optimized_fit_jpa(
+        bestfit_params, mse, datarange = optimized_fit_jpa_strict(
             i_flat, q_flat, freq_flat, proc_par
         )
         
