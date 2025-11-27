@@ -212,18 +212,26 @@ def optimized_fit_jpa(
 
     valid_fits_count = 0
     for jj, fit_halfwidth in enumerate(width_list):
-                
-        start = max(0, peak_idx - fit_halfwidth)
-        stop = min(npts - 1, peak_idx + fit_halfwidth)
-
-        i_slice = i_data[start:stop + 1]
-        q_slice = q_data[start:stop + 1]
-        f_slice = freq[start:stop + 1]
+        
+        # ------------------------------------
+        # COMMENTING OUT 
+        # ------------------------------------
+        # start = max(0, peak_idx - fit_halfwidth)
+        # stop = min(npts - 1, peak_idx + fit_halfwidth)
+        # i_slice = i_data[start:stop + 1]
+        # q_slice = q_data[start:stop + 1]
+        # f_slice = freq[start:stop + 1]
 
         try:
             fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
-                "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
+                "tx", i_data, q_data, freq, init_params, fit_halfwidth
             )
+            # ------------------------------------
+            # COMMENTING OUT 
+            # ------------------------------------
+            # fit_params, best_mse, residuals, peak_idx_slice = cavity_fit(
+            #     "tx", i_slice, q_slice, f_slice, init_params, fit_halfwidth
+            # )
             valid_fits_count += 1
 
             # NEW: store this fit
