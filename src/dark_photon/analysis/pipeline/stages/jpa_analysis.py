@@ -702,67 +702,82 @@ class JPAGainAnalysisStage(PipelineStage):
         return corrected_magnitude
     
     def _fit_jpa_profile_with_cavity_cut(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                                   proc_par: Dict[str, Any], cut_window_ghz: float, 
-                                   cav_freq_ghz: float) -> Tuple[np.ndarray, float, tuple]:
+                                   proc_par: Dict[str, Any], cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
         """
-        Fit JPA profile after applying cavity cut window.
-        
-        Equivalent to MATLAB's cavity cut logic in JPAgainAutorun.
+        Exact MATLAB replication: initial fit on full data, then cut, then final fit.
         """
-        # Flatten arrays for consistency
+        # Flatten arrays
         i_flat = i_data.flatten()
-        q_flat = q_data.flatten()
+        q_flat = q_data.flatten() 
         freq_flat = freq.flatten()
         
-        # Apply cavity cut window (like MATLAB)
+        # STEP 1: Initial fit on FULL JPA data (MATLAB: optimizedfitjpaJ on full data)
+        print("    Step 1: Initial fit on full JPA data to find cavity...")
+        try:
+            init_params, mse_init, datarange_init = optimized_fit_jpa(i_flat, q_flat, freq_flat, proc_par)
+            cav_freq_ghz = init_params[1]  # f0 parameter from initial fit
+            print(f"    Initial fit: cav_freq={cav_freq_ghz:.6f} GHz, MSE={mse_init:.2e}")
+        except Exception as e:
+            print(f"    Initial fit failed: {e}, using peak detection fallback")
+            # Fallback: find frequency at maximum magnitude (simple peak detection)
+            mag = i_flat**2 + q_flat**2
+            peak_idx = np.argmax(mag)
+            cav_freq_ghz = freq_flat[peak_idx]
+            print(f"    Peak detection: cav_freq={cav_freq_ghz:.6f} GHz")
+        
+        # STEP 2: Apply cavity cut window using the frequency from step 1
+        print("    Step 2: Applying cavity cut window...")
         i_cut, q_cut, freq_cut = self._apply_cavity_cut_window(
             i_flat, q_flat, freq_flat, cav_freq_ghz, cut_window_ghz
         )
         
-        # Use optimized_fit_jpa on the cut data
-        bestfit_params, mse, datarange = optimized_fit_jpa(
-            i_cut, q_cut, freq_cut, proc_par
-        )
+        print(f"    Data points: {len(i_flat)} -> {len(i_cut)} (removed {len(i_flat)-len(i_cut)})")
+        
+        # STEP 3: Final fit on CUT data (MATLAB: optimizedfitjpaJ on cut data)
+        print("    Step 3: Final fit on cut data...")
+        if len(i_cut) < 20:  # Need enough points for reasonable fit
+            print("    Warning: Too few points after cut, using full data")
+            bestfit_params, mse, datarange = optimized_fit_jpa(i_flat, q_flat, freq_flat, proc_par)
+        else:
+            bestfit_params, mse, datarange = optimized_fit_jpa(i_cut, q_cut, freq_cut, proc_par)
+        
+        print(f"    Final fit: f0={bestfit_params[1]:.6f} GHz, Q={bestfit_params[2]:.0f}, MSE={mse:.2e}")
         
         return bestfit_params, mse, datarange
 
     def _apply_cavity_cut_window(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                            cav_freq_ghz: float, cut_window_ghz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                           cav_freq_ghz: float, cut_window_ghz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Apply cavity cut window to remove data around cavity frequency.
-        
-        Equivalent to MATLAB: icut=[data.I_jpaamp(1:findex-cut_window_idx) data.I_jpaamp(findex+cut_window_idx:end)];
+        Apply cavity cut window - exact MATLAB replication.
         """
         i_flat = np.asarray(i_data).flatten()
         q_flat = np.asarray(q_data).flatten()
         freq_flat = np.asarray(freq).flatten()
         
-        if len(freq_flat) < 3:
+        if len(freq_flat) < 10:
             return i_flat, q_flat, freq_flat
         
-        # Calculate frequency step
+        # Calculate frequency step (MATLAB: delta_freqGHz = diff(data.f_GHz_jpaamp); delta_freqGHz = delta_freqGHz(1))
         df = abs(freq_flat[1] - freq_flat[0])
         
-        # Calculate cut window in indices (like MATLAB's cut_window_idx)
+        # Calculate cut window in indices (MATLAB: cut_window_idx = ceil(cut_window_GHz/delta_freqGHz))
         cut_window_idx = int(np.ceil(cut_window_ghz / df))
         
-        # Find index closest to cavity frequency (like MATLAB's findex)
+        # Find index closest to cavity frequency (MATLAB: findex = find(abs(...)==min(abs(...))))
         cav_freq_idx = int(np.argmin(np.abs(freq_flat - cav_freq_ghz)))
         
-        # Calculate cut boundaries
-        start_cut = max(cav_freq_idx - cut_window_idx, 0)
-        end_cut = min(cav_freq_idx + cut_window_idx, len(freq_flat) - 1)
+        # Apply cut (MATLAB: icut=[data.I_jpaamp(1:findex-cut_window_idx) data.I_jpaamp(findex+cut_window_idx:end)])
+        start_idx_1 = 0
+        end_idx_1 = cav_freq_idx - cut_window_idx
+        start_idx_2 = cav_freq_idx + cut_window_idx + 1  # +1 because MATLAB is 1-indexed
+        end_idx_2 = len(freq_flat)
         
-        # Create mask to exclude cavity region
-        mask = np.ones(len(freq_flat), dtype=bool)
-        mask[start_cut:end_cut + 1] = False
+        # Combine the two segments (before and after cavity)
+        valid_indices = list(range(start_idx_1, end_idx_1)) + list(range(start_idx_2, end_idx_2))
         
-        # Apply mask to get cut data (like MATLAB's icut, qcut, fcut)
-        i_cut = i_flat[mask]
-        q_cut = q_flat[mask]
-        freq_cut = freq_flat[mask]
-        
-        print(f"    Cavity cut: removed {cut_window_idx * 2} points around {cav_freq_ghz:.6f} GHz")
+        i_cut = i_flat[valid_indices]
+        q_cut = q_flat[valid_indices] 
+        freq_cut = freq_flat[valid_indices]
         
         return i_cut, q_cut, freq_cut
     
