@@ -425,22 +425,97 @@ class JPAGainAnalysisStage(PipelineStage):
         else:
             return np.zeros(5)
     
-    def _fit_jpa_profile(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                        proc_par: Dict[str, Any], cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
+    def _fit_jpa_profile(self,
+                     i_data: np.ndarray,
+                     q_data: np.ndarray,
+                     freq: np.ndarray,
+                     proc_par: Dict[str, Any],
+                     cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
         """
-        Fit JPA profile using optimized_fit_jpa.
+        Fit JPA profile using the same two-step logic as MATLAB JPAgainAutorun:
+
+        1) Fit full data with optimizedfitjpaJ (here: optimized_fit_jpa_strict)
+            to get an initial center frequency estimate.
+        2) Cut out a frequency window of width cut_window_ghz around that center,
+            and refit on the remaining data.
+
+        Returns:
+            bestfit_params : final best-fit parameters (after cut)
+            mse            : MSE of the refit
+            datarange      : slice over the cut frequency array (for diagnostics)
         """
-        # Flatten arrays for consistency
-        i_flat = i_data.flatten()
-        q_flat = q_data.flatten()
-        freq_flat = freq.flatten()
-        
-        # Use the existing optimized_fit_jpa function
-        bestfit_params, mse, datarange = optimized_fit_jpa_strict(
+        # Flatten arrays to 1D
+        i_flat = np.asarray(i_data).flatten()
+        q_flat = np.asarray(q_data).flatten()
+        freq_flat = np.asarray(freq).flatten()
+
+        npts = len(freq_flat)
+        if npts < 5:
+            # Not enough points to do anything reasonable
+            return np.zeros(5), 0.0, slice(0, 0)
+
+        # --- Step 1: initial fit on the full data (MATLAB: init_params1) ---
+        # This mirrors:
+        #   [init_params1, ~, rg0] = optimizedfitjpaJ('tx', data.I_jpaamp, data.Q_jpaamp,
+        #                                             data.f_GHz_jpaamp, proc_par);
+        init_params1, _, _ = optimized_fit_jpa_strict(
             i_flat, q_flat, freq_flat, proc_par
         )
-        
-        return bestfit_params, mse, datarange
+
+        # Center frequency estimate from initial fit
+        f0_est = float(init_params1[1])
+
+        # --- Step 2: compute cut_window_idx from cut_window_ghz and delta_freqGHz ---
+        # MATLAB:
+        #   delta_freqGHz = diff(data.f_GHz_jpaamp);
+        #   delta_freqGHz = delta_freqGHz(1);
+        #   cut_window_idx = ceil(cut_window_GHz/delta_freqGHz);
+        df_arr = np.diff(freq_flat)
+        if len(df_arr) == 0:
+            # Degenerate frequency array; fall back to no cut
+            return init_params1, 0.0, slice(0, npts)
+
+        delta_freqGHz = float(df_arr[0])
+        if delta_freqGHz <= 0:
+            # Non-monotonic or zero-spacing; again, fall back
+            return init_params1, 0.0, slice(0, npts)
+
+        cut_window_idx = int(np.ceil(cut_window_ghz / delta_freqGHz))
+
+        # --- Step 3: find index closest to f0_est (MATLAB: findex) ---
+        # MATLAB:
+        #   findex = find(abs(data.f_GHz_jpaamp-init_params1(2)) == ...
+        #                 min(abs(data.f_GHz_jpaamp-init_params1(2))));
+        findex = int(np.argmin(np.abs(freq_flat - f0_est)))
+
+        # --- Step 4: build cut arrays icut, qcut, fcut (remove window) ---
+        # MATLAB indices (1-based) remove [findex-cut_window_idx : findex+cut_window_idx].
+        # In 0-based Python, that is [findex-cut_window_idx : findex+cut_window_idx], inclusive.
+        # So we keep:
+        #   0 .. left_end-1   and   right_start .. npts-1,
+        # where
+        #   left_end   = max(findex - cut_window_idx, 0)
+        #   right_start = min(findex + cut_window_idx + 1, npts)
+        left_end = max(findex - cut_window_idx, 0)
+        right_start = min(findex + cut_window_idx + 1, npts)
+
+        # If the cut window degenerates (e.g. covers everything), bail out gracefully
+        if left_end <= 0 and right_start >= npts:
+            # Nothing to cut; just return the initial fit
+            return init_params1, 0.0, slice(0, npts)
+
+        icut = np.concatenate([i_flat[:left_end], i_flat[right_start:]])
+        qcut = np.concatenate([q_flat[:left_end], q_flat[right_start:]])
+        fcut = np.concatenate([freq_flat[:left_end], freq_flat[right_start:]])
+
+        # --- Step 5: refit on cut data (MATLAB: bestfitparams, mse1, rg) ---
+        bestfit_params, mse1, datarange_cut = optimized_fit_jpa_strict(
+            icut, qcut, fcut, proc_par
+        )
+
+        # Note: datarange_cut is defined in the cut-space. For most downstream
+        # uses we only care about the parameters and MSE.
+        return bestfit_params, float(mse1), datarange_cut
     
     def _calculate_bandwidth(self, fit_params: np.ndarray) -> float:
         """
