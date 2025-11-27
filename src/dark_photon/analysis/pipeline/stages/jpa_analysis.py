@@ -271,19 +271,14 @@ class JPAGainAnalysisStage(PipelineStage):
             return self._get_default_jpa_results()
     
     def _process_jpa_measurement_with_cache(self, data: Dict, data2: Dict, has_jpa2: bool,
-                                      file_base: Path, scaleinfo: Dict[str, Any],
-                                      proc_par: Dict[str, Any], cut_window_ghz: float,
-                                      file_index: int, cache_dir: Path) -> Dict[str, Any]:
+                                          file_base: Path, scaleinfo: Dict[str, Any],
+                                          proc_par: Dict[str, Any], cut_window_ghz: float,
+                                          file_index: int, cache_dir: Path) -> Dict[str, Any]:
         """
-        Process JPA measurement with caching support, including cavity cut.
+        Process JPA measurement with caching support.
         """
-        # Get cavity frequency for this file
-        tx_params = np.array(scaleinfo['txparams'][file_index])
-        cav_freq_ghz = tx_params[1]
-        
-        # Generate cache file path including cavity frequency in key
-        cache_key = f"{file_base.name}_cav{cav_freq_ghz:.6f}_jpa_fit"
-        cache_file = cache_dir / f"{cache_key}.pkl"
+        # Generate cache file path
+        cache_file = cache_dir / f"{file_base.name}_jpa_fit.pkl"
         
         # Try to load from cache
         if proc_par.get('load_fits', True):
@@ -292,7 +287,7 @@ class JPAGainAnalysisStage(PipelineStage):
                 print(f"    Loaded cached JPA fit: {file_base.name}")
                 return cached_data['jpa_results']
         
-        # Process normally if cache miss (now with cavity cut)
+        # Process normally if cache miss
         jpa_results = self._process_jpa_measurement(
             data, data2, has_jpa2, scaleinfo, proc_par, cut_window_ghz, file_index
         )
@@ -301,8 +296,6 @@ class JPAGainAnalysisStage(PipelineStage):
         cache_data = {
             'jpa_results': jpa_results,
             'jpa_fit_width_sigma': proc_par.get('jpa_fit_width_sigma'),
-            'cavity_freq_ghz': cav_freq_ghz,  # Store cavity freq for validation
-            'cut_window_ghz': cut_window_ghz,  # Store cut window for validation
             'timestamp': datetime.now().isoformat()
         }
         save_cached_fit(cache_file, cache_data)
@@ -343,55 +336,51 @@ class JPAGainAnalysisStage(PipelineStage):
         return i[mask], q[mask], f[mask]
     
     def _process_jpa_measurement(self, data: Dict, data2: Dict, has_jpa2: bool,
-                           scaleinfo: Dict[str, Any], proc_par: Dict[str, Any],
-                           cut_window_ghz: float, file_index: int) -> Dict[str, Any]:
+                               scaleinfo: Dict[str, Any], proc_par: Dict[str, Any],
+                               cut_window_ghz: float, file_index: int) -> Dict[str, Any]:
         """
-        Core JPA measurement processing with cavity cut window.
+        Core JPA measurement processing (equivalent to main loop body in JPAgainAutorun).
         """
         # Extract reflection parameters for this file
         rfl_params = self._get_reflection_params(scaleinfo, file_index)
         
-        # Get initial cavity frequency estimate from transmission parameters
-        tx_params = np.array(scaleinfo['txparams'][file_index])
-        cav_freq_ghz = tx_params[1]  # f0 from transmission fit
-        
-        # Fit primary JPA amplifier data WITH CAVITY CUT
-        amp_fit_params, mse, amp_datarange = self._fit_jpa_profile_with_cavity_cut(
+        # Fit primary JPA amplifier data
+        amp_fit_params, mse, amp_datarange = self._fit_jpa_profile(
             data['I_jpaamp'], data['Q_jpaamp'], data['f_GHz_jpaamp'], 
-            proc_par, cut_window_ghz, cav_freq_ghz
+            proc_par, cut_window_ghz
         )
         
         # Calculate bandwidth and basic gains
         bandwidth = self._calculate_bandwidth(amp_fit_params)
         q2_gain = self._calculate_q2_gain(bandwidth, proc_par.get('JPA_gbw_prod', 8.15e7))
         
-        # Fit squeezer data if available WITH CAVITY CUT
+        # Fit squeezer data if available
         sqz_fit_params = np.zeros(5)
         try:
-            sqz_fit_params, _, _ = self._fit_jpa_profile_with_cavity_cut(
+            sqz_fit_params, _, _ = self._fit_jpa_profile(
                 data['I_jpasqz'], data['Q_jpasqz'], data['f_GHz_jpasqz'],
-                proc_par, cut_window_ghz, cav_freq_ghz
+                proc_par, cut_window_ghz
             )
         except Exception:
             # Squeezer fitting failed, use zeros
             pass
         
-        # Fit secondary measurements if available WITH CAVITY CUT
+        # Fit secondary measurements if available
         amp2_fit_params = np.zeros(5)
         sqz2_fit_params = np.zeros(5)
         if has_jpa2:
             try:
-                amp2_fit_params, _, _ = self._fit_jpa_profile_with_cavity_cut(
+                amp2_fit_params, _, _ = self._fit_jpa_profile(
                     data2['I_jpaamp2'], data2['Q_jpaamp2'], data2['f_GHz_jpaamp2'],
-                    proc_par, cut_window_ghz, cav_freq_ghz
+                    proc_par, cut_window_ghz
                 )
             except Exception:
                 pass
             
             try:
-                sqz2_fit_params, _, _ = self._fit_jpa_profile_with_cavity_cut(
+                sqz2_fit_params, _, _ = self._fit_jpa_profile(
                     data2['I_jpasqz2'], data2['Q_jpasqz2'], data2['f_GHz_jpasqz2'],
-                    proc_par, cut_window_ghz, cav_freq_ghz
+                    proc_par, cut_window_ghz
                 )
             except Exception:
                 pass
@@ -718,131 +707,3 @@ class JPAGainAnalysisStage(PipelineStage):
             'amp_gain_fit': np.zeros(5),
             'sqz_gain_fit': np.zeros(5),
         }
-    
-    def _fit_jpa_profile_with_cavity_cut(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                                   proc_par: Dict[str, Any], cut_window_ghz: float, 
-                                   cav_freq_ghz: float) -> Tuple[np.ndarray, float, tuple]:
-        """
-        Fit JPA profile after applying cavity cut window.
-        
-        Equivalent to MATLAB's cavity cut logic in JPAgainAutorun.
-        """
-        # Flatten arrays for consistency
-        i_flat = i_data.flatten()
-        q_flat = q_data.flatten()
-        freq_flat = freq.flatten()
-        
-        # Apply cavity cut window (like MATLAB)
-        i_cut, q_cut, freq_cut = self._apply_cavity_cut_window_debug(
-            i_flat, q_flat, freq_flat, cav_freq_ghz, cut_window_ghz
-        )
-        
-        # Use optimized_fit_jpa on the cut data
-        bestfit_params, mse, datarange = optimized_fit_jpa(
-            i_cut, q_cut, freq_cut, proc_par
-        )
-        
-        return bestfit_params, mse, datarange
-
-    def _apply_cavity_cut_window(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                            cav_freq_ghz: float, cut_window_ghz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Apply cavity cut window to remove data around cavity frequency.
-        
-        Equivalent to MATLAB: icut=[data.I_jpaamp(1:findex-cut_window_idx) data.I_jpaamp(findex+cut_window_idx:end)];
-        """
-        i_flat = np.asarray(i_data).flatten()
-        q_flat = np.asarray(q_data).flatten()
-        freq_flat = np.asarray(freq).flatten()
-        
-        if len(freq_flat) < 3:
-            return i_flat, q_flat, freq_flat
-        
-        # Calculate frequency step
-        df = abs(freq_flat[1] - freq_flat[0])
-        
-        # Calculate cut window in indices (like MATLAB's cut_window_idx)
-        cut_window_idx = int(np.ceil(cut_window_ghz / df))
-        
-        # Find index closest to cavity frequency (like MATLAB's findex)
-        cav_freq_idx = int(np.argmin(np.abs(freq_flat - cav_freq_ghz)))
-        
-        # Calculate cut boundaries
-        start_cut = max(cav_freq_idx - cut_window_idx, 0)
-        end_cut = min(cav_freq_idx + cut_window_idx, len(freq_flat) - 1)
-        
-        # Create mask to exclude cavity region
-        mask = np.ones(len(freq_flat), dtype=bool)
-        mask[start_cut:end_cut + 1] = False
-        
-        # Apply mask to get cut data (like MATLAB's icut, qcut, fcut)
-        i_cut = i_flat[mask]
-        q_cut = q_flat[mask]
-        freq_cut = freq_flat[mask]
-        
-        print(f"    Cavity cut: removed {cut_window_idx * 2} points around {cav_freq_ghz:.6f} GHz")
-        
-        return i_cut, q_cut, freq_cut
-    
-    def _apply_cavity_cut_window_debug(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
-                                 cav_freq_ghz: float, cut_window_ghz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Apply cavity cut window with maximum debugging.
-        """
-        print(f"    _apply_cavity_cut_window_debug: cav_freq={cav_freq_ghz:.6f}, cut_window={cut_window_ghz:.6f}")
-        
-        i_flat = np.asarray(i_data).flatten()
-        q_flat = np.asarray(q_data).flatten()
-        freq_flat = np.asarray(freq).flatten()
-        
-        print(f"    Input arrays: i={len(i_flat)}, q={len(q_flat)}, f={len(freq_flat)}")
-        
-        if len(freq_flat) < 10:
-            print("    WARNING: Too few points for meaningful cut")
-            return i_flat, q_flat, freq_flat
-        
-        try:
-            # Calculate frequency step
-            df = abs(freq_flat[1] - freq_flat[0])
-            print(f"    Frequency step: {df:.8f} GHz")
-            
-            # Calculate cut window in indices
-            if df == 0:
-                print("    ERROR: Zero frequency step")
-                return i_flat, q_flat, freq_flat
-                
-            cut_window_idx = int(np.ceil(cut_window_ghz / df))
-            print(f"    Cut window: {cut_window_ghz:.6f} GHz / {df:.8f} GHz = {cut_window_idx} indices")
-            
-            # Find index closest to cavity frequency
-            cav_freq_idx = int(np.argmin(np.abs(freq_flat - cav_freq_ghz)))
-            actual_cav_freq = freq_flat[cav_freq_idx]
-            print(f"    Cavity index: {cav_freq_idx}, actual freq: {actual_cav_freq:.6f} GHz")
-            
-            # Calculate cut boundaries
-            start_cut = max(cav_freq_idx - cut_window_idx, 0)
-            end_cut = min(cav_freq_idx + cut_window_idx, len(freq_flat) - 1)
-            print(f"    Cut region: indices {start_cut} to {end_cut}")
-            
-            if start_cut >= end_cut:
-                print("    WARNING: Invalid cut region, returning full data")
-                return i_flat, q_flat, freq_flat
-            
-            # Create mask
-            mask = np.ones(len(freq_flat), dtype=bool)
-            mask[start_cut:end_cut + 1] = False
-            
-            # Apply mask
-            i_cut = i_flat[mask]
-            q_cut = q_flat[mask]
-            freq_cut = freq_flat[mask]
-            
-            print(f"    Cut result: {len(i_flat)} -> {len(i_cut)} points")
-            
-            return i_cut, q_cut, freq_cut
-            
-        except Exception as e:
-            print(f"    ERROR in _apply_cavity_cut_window_debug: {e}")
-            import traceback
-            traceback.print_exc()
-            return i_flat, q_flat, freq_flat
