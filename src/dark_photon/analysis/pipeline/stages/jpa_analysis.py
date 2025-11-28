@@ -588,24 +588,16 @@ class JPAGainAnalysisStage(PipelineStage):
                              sqz_fit_params: np.ndarray, sqz2_fit_params: np.ndarray,
                              rfl_params: np.ndarray, data: Dict, data2: Dict, 
                              has_jpa2: bool) -> Dict[str, float]:
-    
-        print(f"=== Gain Calculation Debug ===")
-        print(f"AMP fit params: f0={amp_fit_params[1]:.6f}, Q={amp_fit_params[2]:.1f}, P_max={amp_fit_params[0]:.6f}")
         
         corrected = {}
         
         # Calculate baseline reflection level
         rfl_base_dB = self._calculate_reflection_baseline(rfl_params)
-        print(f"RFL params: {rfl_params}")
-        print(f"RFL base dB: {rfl_base_dB:.2f}")
         
         # Corrected amplifier gains
         amp_peak_gain = self._lorentzian_function(amp_fit_params[1], amp_fit_params)
         amp_peak_dB = 10.0 * np.log10(amp_peak_gain) if amp_peak_gain > 0 else 0.0
         corrected_gain = amp_peak_dB - rfl_base_dB
-        
-        print(f"AMP peak gain: {amp_peak_gain:.6f} linear, {amp_peak_dB:.2f} dB")
-        print(f"AMP corrected gain: {corrected_gain:.2f} dB")
         
         corrected['gain2Q_amp_dB_fit_corr'] = corrected_gain
         
@@ -622,7 +614,6 @@ class JPAGainAnalysisStage(PipelineStage):
             sqz2_fit_params, rfl_params, rfl_base_dB
         ) if has_jpa2 else 0.0
         
-        print("=" * 50)
         return corrected
     
     def _calculate_reflection_baseline(self, rfl_params: np.ndarray) -> float:
