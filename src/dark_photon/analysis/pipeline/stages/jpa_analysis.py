@@ -66,24 +66,10 @@ class JPAGainAnalysisStage(PipelineStage):
         cav_bw_ghz = self._calculate_cavity_bandwidth(scaleinfo)
         cut_window_ghz = cav_bw_ghz
         
-        print(f"=== Cut Window Calculation ===")
-        print(f"Cavity bandwidth calculation:")
-        txparams = np.array(scaleinfo.get('txparams', []))
-        if len(txparams) > 0:
-            mean_f0 = np.mean(txparams[:, 1])
-            mean_Q = np.mean(txparams[:, 2])
-            print(f"  Mean f0: {mean_f0:.6f} GHz")
-            print(f"  Mean Q: {mean_Q:.1f}")
-            print(f"  Cavity BW: {mean_f0/mean_Q:.6f} GHz")
-        print(f"Final cut window: {cut_window_ghz:.6f} GHz")
-        print("=" * 50)
-        
         processed_count = 0
         
         for i, tx2_file in enumerate(files):
-            if i < 40:
-                continue
-            print(f"PROCESSIAMO {i} --------------------------------")
+            
             try:
                 # Process this JPA dataset
                 file_base = self._get_file_base(tx2_file)
@@ -245,10 +231,6 @@ class JPAGainAnalysisStage(PipelineStage):
     def _process_jpa_dataset(self, file_base: Path, scaleinfo: Dict[str, Any], 
                        proc_par: Any, context: PipelineContext, file_index: int, 
                        cut_window_ghz: float) -> Dict[str, Any]:
-    
-        print(f"=== In _process_jpa_dataset ===")
-        print(f"Using passed cut_window_ghz: {cut_window_ghz:.6f} GHz")
-        print(f"Scaleinfo JPA_cut_window_GHz: {scaleinfo.get('JPA_cut_window_GHz', 'Not set')}")
         
         try:
             # Load JPA data files
@@ -424,11 +406,6 @@ class JPAGainAnalysisStage(PipelineStage):
     
     def _fit_jpa_profile(self, i_data: np.ndarray, q_data: np.ndarray, freq: np.ndarray,
                     proc_par: Dict[str, Any], cut_window_ghz: float) -> Tuple[np.ndarray, float, tuple]:
-    
-        print(f"=== Python JPA Analysis ===")
-        print(f"Input data - I: {i_data.shape}, Q: {q_data.shape}, freq: {freq.shape}")
-        print(f"Freq range: [{freq.min():.6f}, {freq.max():.6f}] GHz")
-        print(f"Cut window: {cut_window_ghz:.6f} GHz")
         
         # Flatten arrays
         i_flat = i_data.flatten()
@@ -437,13 +414,10 @@ class JPAGainAnalysisStage(PipelineStage):
         
         # Debug frequency step
         df = abs(freq_flat[1] - freq_flat[0])
-        print(f"Frequency step: {df:.9f} GHz")
         
         # Get initial parameters for cavity resonance location
         from src.dark_photon.fitting import optimized_fit_jpa
-        init_params, init_mse, _ = optimized_fit_jpa(i_flat, q_flat, freq_flat, proc_par)
-        
-        print(f"Initial fit - f0: {init_params[1]:.6f} GHz, Q: {init_params[2]:.1f}, P_max: {init_params[0]:.6f}")
+        init_params, _, _ = optimized_fit_jpa(i_flat, q_flat, freq_flat, proc_par)
         
         # Apply cavity cut window
         if cut_window_ghz > 0:
@@ -452,12 +426,6 @@ class JPAGainAnalysisStage(PipelineStage):
             # Find index closest to cavity resonance
             cavity_freq = init_params[1]
             findex = int(np.argmin(np.abs(freq_flat - cavity_freq)))
-            
-            print(f"Cavity freq: {cavity_freq:.6f} GHz, findex: {findex}")
-            print(f"df: {df:.9f} GHz, cut_window_ghz: {cut_window_ghz:.6f} GHz")
-            print(f"cut_window_idx calculation: {cut_window_ghz} / {df} = {cut_window_ghz/df}")
-            print(f"cut_window_idx: {cut_window_idx}")
-            print(f"Original data points: {len(freq_flat)}")
             
             # Apply cut
             mask = np.ones_like(freq_flat, dtype=bool)
@@ -469,40 +437,11 @@ class JPAGainAnalysisStage(PipelineStage):
             q_cut = q_flat[mask]
             freq_cut = freq_flat[mask]
             
-            removed_points = len(freq_flat) - len(freq_cut)
-            print(f"After cut - points: {len(freq_cut)}, removed: {removed_points}")
-            print(f"Cut indices: [{start_cut}, {end_cut}]")
-            print(f"Cut freq range: [{freq_cut.min():.6f}, {freq_cut.max():.6f}] GHz")
-            
-            # Debug: show what frequencies are being removed
-            removed_freqs = freq_flat[~mask]
-            if len(removed_freqs) > 0:
-                print(f"Removed freq range: [{removed_freqs.min():.6f}, {removed_freqs.max():.6f}] GHz")
-
-            # After applying cut, debug the exact indices
-            print(f"Cut application details:")
-            print(f"  findex: {findex}, cut_window_idx: {cut_window_idx}")
-            print(f"  start_cut: {start_cut}, end_cut: {end_cut}")
-            print(f"  Points removed: {removed_points}")
-            print(f"  Expected points after cut: {len(freq_flat) - (end_cut - start_cut + 1)}")
-            
-            # Debug: Show exact frequency values around the cut
-            print(f"Frequencies around cut region:")
-            print(f"  Before cut start: {freq_flat[start_cut-1]:.6f} GHz")
-            print(f"  Cut start: {freq_flat[start_cut]:.6f} GHz")  
-            print(f"  Cavity freq: {cavity_freq:.6f} GHz")
-            print(f"  Cut end: {freq_flat[end_cut]:.6f} GHz")
-            print(f"  After cut end: {freq_flat[end_cut+1]:.6f} GHz")
-            
         else:
             i_cut, q_cut, freq_cut = i_flat, q_flat, freq_flat
         
         # Fit cut data
         bestfit_params, mse, datarange = optimized_fit_jpa(i_cut, q_cut, freq_cut, proc_par)
-        
-        print(f"Final fit   - f0: {bestfit_params[1]:.6f} GHz, Q: {bestfit_params[2]:.1f}, P_max: {bestfit_params[0]:.6f}")
-        print(f"MSE: {mse:.6e}")
-        print("=" * 50)
         
         return bestfit_params, mse, datarange
 
