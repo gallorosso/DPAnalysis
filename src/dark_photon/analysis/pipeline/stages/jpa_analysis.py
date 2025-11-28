@@ -81,8 +81,8 @@ class JPAGainAnalysisStage(PipelineStage):
         processed_count = 0
         
         for i, tx2_file in enumerate(files):
-            # if i < 40:
-            #     continue
+            if i < 40:
+                continue
             print(f"PROCESSIAMO {i} --------------------------------")
             try:
                 # Process this JPA dataset
@@ -461,8 +461,8 @@ class JPAGainAnalysisStage(PipelineStage):
             
             # Apply cut
             mask = np.ones_like(freq_flat, dtype=bool)
-            start_cut = max(0, findex - cut_window_idx)
-            end_cut = min(len(freq_flat) - 1, findex + cut_window_idx)
+            start_cut = max(0, findex - cut_window_idx + 1)
+            end_cut = min(len(freq_flat) - 1, findex + cut_window_idx - 1)
             mask[start_cut:end_cut + 1] = False
             
             i_cut = i_flat[mask]
@@ -478,6 +478,21 @@ class JPAGainAnalysisStage(PipelineStage):
             removed_freqs = freq_flat[~mask]
             if len(removed_freqs) > 0:
                 print(f"Removed freq range: [{removed_freqs.min():.6f}, {removed_freqs.max():.6f}] GHz")
+
+            # After applying cut, debug the exact indices
+            print(f"Cut application details:")
+            print(f"  findex: {findex}, cut_window_idx: {cut_window_idx}")
+            print(f"  start_cut: {start_cut}, end_cut: {end_cut}")
+            print(f"  Points removed: {removed_points}")
+            print(f"  Expected points after cut: {len(freq_flat) - (end_cut - start_cut + 1)}")
+            
+            # Debug: Show exact frequency values around the cut
+            print(f"Frequencies around cut region:")
+            print(f"  Before cut start: {freq_flat[start_cut-1]:.6f} GHz")
+            print(f"  Cut start: {freq_flat[start_cut]:.6f} GHz")  
+            print(f"  Cavity freq: {cavity_freq:.6f} GHz")
+            print(f"  Cut end: {freq_flat[end_cut]:.6f} GHz")
+            print(f"  After cut end: {freq_flat[end_cut+1]:.6f} GHz")
             
         else:
             i_cut, q_cut, freq_cut = i_flat, q_flat, freq_flat
