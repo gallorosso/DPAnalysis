@@ -68,7 +68,7 @@ def main():
         tx_res = results["transmission_analysis"]
         rfl_res = results["reflection_analysis"]
         jpa_res = results["jpa_analysis"]
-        file_enum = results["file_enumeration"]
+        # file_enum = results["file_enumeration"]
         if jpa_res:
             print(f"✓ JPA analysis completed: {len(jpa_res.scaleinfo_updates.get('JPA_mse', []))} datasets")
         else:
@@ -83,7 +83,7 @@ def main():
         plot_tx_summary(tx_res, scaleinfo, plot_dir, show=False)
         # RFL summary  
         plot_rfl_summary(rfl_res, scaleinfo, plot_dir, show=False)
-        # JPA plots - ADD THESE LINES
+        # JPA plots
         # plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, file_enum.files, plot_dir, show=False)
         plot_jpa_summary(jpa_res.scaleinfo_updates, scaleinfo, plot_dir, show=False)
 
