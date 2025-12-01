@@ -87,3 +87,15 @@ class JPAGainAnalysisResult:
     q2gain: Optional[np.ndarray] = None
 
     status: str = "pending"
+
+@dataclass
+class SpectrumInfoResult:
+    """
+    Results from spectrum (PSA) info stage.
+
+    Python implementation of LoadSpectrumInfo (analysis only, no plotting).
+    """
+    scaleinfo_updates: Dict[str, Any] = field(default_factory=dict)
+    # Optionally: keep some raw arrays for debugging / QA
+    # e.g. sum_power_in_IF: np.ndarray = None
+    status: str = "pending"
