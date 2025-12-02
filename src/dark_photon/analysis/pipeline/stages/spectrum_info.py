@@ -1,7 +1,7 @@
 # DPAnalysis/src/dark_photon/analysis/pipeline/stages/spectrum_info.py
 
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 import numpy as np
 import scipy.io
@@ -73,7 +73,7 @@ class SpectrumInfoStage(PipelineStage):
 
         # 3) Access processing parameters (MATLAB 'proc_par') and DQ cuts ('cutpar')
         proc_par = context.run_props.processing
-        cutpar = context.run_props.data_quality_cuts  # assuming this exists; adjust name if needed
+        cutpar = context.run_props.data_quality
 
         # 4) Prepare containers for per-spectrum outputs that will go into scaleinfo_updates
         #    (we'll mirror the MATLAB fields later; for now just create an empty dict)
@@ -212,7 +212,9 @@ class SpectrumInfoStage(PipelineStage):
                     fresolution,
                     GA,
                     psadata,
+                    spectrum_date,
                 )
+
 
                 # --- 5.10 Alignment angle and final bookkeeping ---
                 # MATLAB:
@@ -562,12 +564,81 @@ class SpectrumInfoStage(PipelineStage):
 
         MATLAB:
             quick_pad = ceil(100e3/fresolution);
-            IFdippts = find((freq_Hz_spec>=proc_par.IFdiploc_MHz(1)*10^6)&(freq_Hz_spec<=proc_par.IFdiploc_MHz(2)*10^6));
+            IFdippts = find((freq_Hz_spec>=proc_par.IFdiploc_MHz(1)*10^6)& ...
+                            (freq_Hz_spec<=proc_par.IFdiploc_MHz(2)*10^6));
             IFwinpts = find((freq_Hz_spec>=proc_par.IFwindow(1))&(freq_Hz_spec<=proc_par.IFwindow(2)));
             [~,lowpass_idx] = min(abs(proc_par.LowPass_MHz*1e6 - freq_Hz_spec));
             [~,pr_idx]      = min(abs(proc_par.pr_loc_kHz_data*1000 - freq_Hz_spec));
         """
-        raise NotImplementedError
+        freq = np.asarray(freq_Hz_spec).ravel()
+        if freq.size == 0:
+            raise ValueError("freq_Hz_spec is empty")
+
+        # quick_pad = ceil(100e3 / fresolution)
+        quick_pad = int(np.ceil(100e3 / fresolution))
+
+        # --- IF dip indices from calibration.IFdiploc_MHz ---
+        IFdiploc_MHz = np.asarray(
+            getattr(proc_par, "calibration", {}).get("IFdiploc_MHz", [0.0, 0.0]),
+            dtype=float,
+        )
+        if IFdiploc_MHz.size != 2:
+            raise ValueError(
+                f"proc_par.calibration['IFdiploc_MHz'] must have length 2, "
+                f"got {IFdiploc_MHz}"
+            )
+        dip_lo = IFdiploc_MHz[0] * 1e6  # MHz -> Hz
+        dip_hi = IFdiploc_MHz[1] * 1e6
+
+        dip_mask = (freq >= dip_lo) & (freq <= dip_hi)
+        dip_pts = np.where(dip_mask)[0]
+        if dip_pts.size == 0:
+            raise ValueError(
+                f"No frequency points found in IF dip range "
+                f"[{dip_lo:.1f}, {dip_hi:.1f}] Hz"
+            )
+        IFdipidx = (int(dip_pts[0]), int(dip_pts[-1]))
+
+        # --- IF window indices from proc_par.IFwindow (already in Hz) ---
+        IFwindow = np.asarray(proc_par.IFwindow, dtype=float)
+        if IFwindow.size != 2:
+            raise ValueError(
+                f"proc_par.IFwindow must have length 2, got {IFwindow}"
+            )
+        win_lo, win_hi = IFwindow
+        win_mask = (freq >= win_lo) & (freq <= win_hi)
+        win_pts = np.where(win_mask)[0]
+        if win_pts.size == 0:
+            raise ValueError(
+                f"No frequency points found in IF window "
+                f"[{win_lo:.1f}, {win_hi:.1f}] Hz"
+            )
+        IFwinidx = (int(win_pts[0]), int(win_pts[-1]))
+
+        # --- Low-pass index from LowPass_MHz ---
+        lowpass_freq_Hz = float(proc_par.LowPass_MHz) * 1e6
+        lowpass_idx = int(np.argmin(np.abs(lowpass_freq_Hz - freq)))
+
+        # --- Probe index from calibration.pr_loc_kHz_data ---
+        # MATLAB uses "proc_par.pr_loc_kHz_data*1000", which in Phase IIc
+        # is a 2-element array [10, 2000]. For the data, the probe tone is
+        # at the higher frequency (2 MHz), so we mirror that by taking the
+        # last element.
+        pr_loc_kHz_data = np.asarray(
+            getattr(proc_par, "calibration", {}).get("pr_loc_kHz_data", 0.0),
+            dtype=float,
+        )
+        if pr_loc_kHz_data.size == 0:
+            raise ValueError("proc_par.calibration['pr_loc_kHz_data'] is empty")
+        if pr_loc_kHz_data.size > 1:
+            pr_target_Hz = float(pr_loc_kHz_data[-1] * 1e3)  # use high-freq entry
+        else:
+            pr_target_Hz = float(pr_loc_kHz_data * 1e3)
+
+        pr_idx = int(np.argmin(np.abs(pr_target_Hz - freq)))
+
+        return quick_pad, IFdipidx, IFwinidx, lowpass_idx, pr_idx
+
 
     def _analyze_squeezing_blocks(
         self,
@@ -608,13 +679,15 @@ class SpectrumInfoStage(PipelineStage):
         fresolution: float,
         GA: float,
         psadata: Dict[str, Any],
+        spectrum_date: int,
     ) -> Dict[str, Any]:
         """
-        Compute baseline, probe heights, IF dip, IF sums, pr_power_stds, etc.
+        Compute baseline, probe heights, IF dip, IF sums, pr_power_stds, sigma_exp,
+        and fitnumber for a single spectrum.
 
-        This collects the block:
+        Direct translation of the MATLAB block:
 
-            spec_bl        = (mean(dat_spec(pr_idx+10:pr_idx+30))+ ...
+            spec_bl        = (mean(dat_spec(pr_idx+10:pr_idx+30)) + ...
                               mean(dat_spec(pr_idx-30:pr_idx-10)))/2;
             pr_height      = max(dat_spec(pr_idx-30:pr_idx+30));
             pr_height_sqz  = max(dat_spec_sq(pr_idx-30:pr_idx+30));
@@ -626,8 +699,172 @@ class SpectrumInfoStage(PipelineStage):
             ...
             scaleinfo.pr_power_stds(i)  = std(psadata.meanavgps.pt_power_est_list);
             ...
+            scaleinfo.sigma_exp(i)      = 1.0./sqrt(delta_t.*fresolution*proc_par.binavg);
+            scaleinfo.fitnumber_list(i) = ceil(proc_par.sg_win_Hz/fresolution) + 1;
+            scaleinfo.fitnumber2(i)     = scaleinfo.fitnumber_list(i);
         """
-        raise NotImplementedError
+        dat_spec = np.asarray(dat_spec).ravel()
+        dat_spec_sq = np.asarray(dat_spec_sq).ravel()
+        n = dat_spec.size
+
+        # --- pr_power: db2pow(tone_power_PR_fordata) with fallback -45 dB ---
+        try:
+            tone_power_db = float(np.squeeze(psadata["tone_power_PR_fordata"]))
+        except Exception:
+            # old value before recording was -45 dB
+            tone_power_db = -45.0
+        pr_power = 10.0 ** (tone_power_db / 10.0)  # db2pow
+
+        # --- Helper to make MATLAB-style index ranges (inclusive) safe in Python ---
+        def _safe_slice(center: int, lo_offset: int, hi_offset: int) -> slice:
+            """
+            Convert MATLAB [center+lo_offset : center+hi_offset] (inclusive, 1-based)
+            to a safe Python slice on 0-based arrays.
+            Here, pr_idx is already a 0-based index, so we implement the offsets
+            directly on that basis and clamp to [0, n-1].
+            """
+            start = max(center + lo_offset, 0)
+            stop_inclusive = min(center + hi_offset, n - 1)
+            return slice(start, stop_inclusive + 1)
+
+        # --- spec_bl, pr_height, pr_height_sqz ---
+        # MATLAB:
+        #   spec_bl = (mean(dat_spec(pr_idx+10:pr_idx+30)) + 
+        #              mean(dat_spec(pr_idx-30:pr_idx-10)))/2;
+        hi_slice = _safe_slice(pr_idx, 10, 30)
+        lo_slice = _safe_slice(pr_idx, -30, -10)
+
+        hi_mean = float(np.mean(dat_spec[hi_slice])) if hi_slice.stop > hi_slice.start else np.nan
+        lo_mean = float(np.mean(dat_spec[lo_slice])) if lo_slice.stop > lo_slice.start else np.nan
+
+        if np.isnan(hi_mean) or np.isnan(lo_mean):
+            spec_bl = float("nan")
+        else:
+            spec_bl = 0.5 * (hi_mean + lo_mean)
+
+        # MATLAB:
+        #   pr_height     = max(dat_spec(pr_idx-30:pr_idx+30));
+        #   pr_height_sqz = max(dat_spec_sq(pr_idx-30:pr_idx+30));
+        pr_slice = _safe_slice(pr_idx, -30, 30)
+        pr_height = float(np.max(dat_spec[pr_slice])) if pr_slice.stop > pr_slice.start else float("nan")
+        pr_height_sqz = float(np.max(dat_spec_sq[pr_slice])) if pr_slice.stop > pr_slice.start else float("nan")
+
+        # --- IF dip height ---
+        # MATLAB indices are 1-based and inclusive; IFdipidx here is 0-based
+        dip_start, dip_end = IFdipidx
+        dip_start = max(dip_start, 0)
+        dip_end = min(dip_end, n - 1)
+        if dip_end < dip_start:
+            dip_height = float("nan")
+        else:
+            dip_height = float(np.min(dat_spec[dip_start : dip_end + 1]))
+
+        # --- IF band sums and mean ---
+        win_start, win_end = IFwinidx
+        win_start = max(win_start, 0)
+        win_end = min(win_end, n - 1)
+
+        if win_end >= win_start:
+            sum_power_in_IF_sq = float(np.sum(dat_spec_sq[win_start : win_end + 1]))
+            sum_power_in_IF = float(np.sum(dat_spec[win_start : win_end + 1]))
+        else:
+            sum_power_in_IF_sq = float("nan")
+            sum_power_in_IF = float("nan")
+
+        # MATLAB:
+        #   scaleinfo.mean_of_spec(i) = mean(dat_spec(IFwinidx(1):IFwinidx(2)+ quick_pad -1));
+        mean_end = min(win_end + quick_pad - 1, n - 1)
+        if mean_end >= win_start:
+            mean_of_spec = float(np.mean(dat_spec[win_start : mean_end + 1]))
+        else:
+            mean_of_spec = float("nan")
+
+        # --- Normalised probe heights ---
+        #   scaleinfo.pr_height(i)      = pr_height     /(pr_power*probe_scale);
+        #   scaleinfo.pr_height_sqz(i)  = pr_height_sqz /(pr_power*probe_scale);
+        norm_denom = pr_power * probe_scale if pr_power > 0 and probe_scale > 0 else float("nan")
+        if np.isfinite(norm_denom) and norm_denom != 0:
+            pr_height_norm = pr_height / norm_denom
+            pr_height_sqz_norm = pr_height_sqz / norm_denom
+        else:
+            pr_height_norm = float("nan")
+            pr_height_sqz_norm = float("nan")
+
+        # --- pr_power_stds from meanavgps.pt_power_est_list ---
+        meanavgps = psadata.get("meanavgps", None)
+        if isinstance(meanavgps, np.ndarray):
+            meanavgps = meanavgps.item()
+
+        pt_list = None
+        if meanavgps is not None:
+            # Handle both object attribute and numpy.void field
+            if hasattr(meanavgps, "pt_power_est_list"):
+                pt_list = getattr(meanavgps, "pt_power_est_list")
+            elif isinstance(meanavgps, np.void) and "pt_power_est_list" in meanavgps.dtype.names:
+                pt_list = meanavgps["pt_power_est_list"]
+
+        pr_power_stds_raw = float("nan")
+        if pt_list is not None:
+            # MATLAB has a branch depending on Y_factor_moved_start, but in SciPy's
+            # representation both cell arrays and numeric arrays end up as numpy
+            # arrays; we compute std over all entries either way.
+            arr = np.asarray(pt_list, dtype=float).ravel()
+            if arr.size > 0:
+                pr_power_stds_raw = float(np.std(arr))
+
+        if (
+            np.isfinite(pr_power_stds_raw)
+            and pr_power > 0
+            and GA > 0
+            and probe_scale > 0
+        ):
+            pr_power_stds = pr_power_stds_raw / (
+                np.sqrt(pr_power) * GA * probe_scale
+            )
+        else:
+            pr_power_stds = float("nan")
+
+        # --- sigma_exp and fitnumber ---
+        #   scaleinfo.sigma_exp(i)      = 1.0./sqrt(delta_t.*fresolution*proc_par.binavg);
+        binavg = getattr(proc_par, "binavg", 1)
+        if delta_t > 0 and fresolution > 0 and binavg > 0:
+            sigma_exp = 1.0 / np.sqrt(delta_t * fresolution * binavg)
+        else:
+            sigma_exp = float("nan")
+
+        #   scaleinfo.fitnumber_list(i) = ceil(proc_par.sg_win_Hz/fresolution) + 1;
+        # sg_win_Hz lives in proc_par.filters in the Python ProcessingParameters
+        sg_win_Hz = None
+        if hasattr(proc_par, "filters"):
+            sg_win_Hz = proc_par.filters.get("sg_win_Hz", None)
+
+        if sg_win_Hz is not None and fresolution > 0:
+            fitnumber = int(np.ceil(float(sg_win_Hz) / fresolution) + 1)
+        else:
+            fitnumber = None
+
+        # Pack everything into a dict; execute() will store these into scaleinfo_updates
+        return {
+            # raw (unnormalised) quantities
+            "spec_bl": spec_bl,
+            "pr_height_raw": pr_height,
+            "pr_height_sqz_raw": pr_height_sqz,
+            "IFdipheight": dip_height,
+            "sum_power_in_IF_sq": sum_power_in_IF_sq,
+            "sum_power_in_IF": sum_power_in_IF,
+            "mean_of_spec": mean_of_spec,
+            "pr_power": pr_power,
+            # normalised probe heights
+            "pr_height": pr_height_norm,
+            "pr_height_sqz": pr_height_sqz_norm,
+            # noise on probe power
+            "pr_power_stds": pr_power_stds,
+            # theoretical expectation and SG fit number
+            "sigma_exp": sigma_exp,
+            "fitnumber_list": fitnumber,
+            "fitnumber2": fitnumber,
+        }
+
 
     def _extract_alignment_angle(self, psadata: Dict[str, Any]) -> float:
         """
@@ -662,3 +899,30 @@ class SpectrumInfoStage(PipelineStage):
 
         print("  ✓ Spectrum info stage produced scaleinfo updates")
         return True
+    
+    def _extract_alignment_angle(self, psadata: Dict[str, Any]) -> float:
+        """
+        Extract and wrap alignment angle.
+
+        MATLAB:
+            try
+                scaleinfo.align_ang(i)    = psadata.align_ang;
+                if psadata.align_ang < 0
+                    scaleinfo.align_ang(i)    = psadata.align_ang + pi;
+                end
+            catch
+                scaleinfo.align_ang(i)    = -1;
+            end
+        """
+        import math
+
+        try:
+            align_ang = float(np.squeeze(psadata["align_ang"]))
+        except Exception:
+            return -1.0
+
+        if align_ang < 0:
+            align_ang = align_ang + math.pi
+
+        return align_ang
+
