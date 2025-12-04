@@ -144,7 +144,10 @@ class SpectrumInfoStage(PipelineStage):
                 print(f"      Extracted spectrum: {len(dat_spec)} points, GA={GA:.2f}")
                 
                 # --- 5.4 Probe scale ---
-                probe_scale = self._compute_probe_scale(psadata, proc_par, freq_Hz_spec)
+                # Old incorrect call:
+                # probe_scale = self._compute_probe_scale(psadata, proc_par, freq_Hz_spec)
+                # New correct call:
+                probe_scale = self._compute_probe_scale(merged_scaleinfo, i)
                 probe_scale_arr[i] = probe_scale
 
                 # --- 5.5 Norm factors ---
@@ -556,24 +559,22 @@ class SpectrumInfoStage(PipelineStage):
         Extract AS / IQ normalization factors and store in scaleinfo.
         """
         meanavgps = psadata.get("meanavgps", None)
-        if isinstance(meanavgps, np.ndarray):
-            meanavgps = meanavgps.item()
-
-        def _safe_get(name: str, default: float = -1.0) -> float:
+        
+        def _safe_get(field_name: str, default: float = -1.0) -> float:
             try:
-                if meanavgps is None:
-                    return default
-                if hasattr(meanavgps, name):
-                    return float(np.squeeze(getattr(meanavgps, name)))
-                if isinstance(meanavgps, np.void) and name in meanavgps.dtype.names:
-                    return float(np.squeeze(meanavgps[name]))
+                if meanavgps is not None and field_name in meanavgps.dtype.names:
+                    # Access the field correctly
+                    field_data = meanavgps[field_name][0, 0]
+                    return float(np.squeeze(field_data))
                 return default
             except Exception:
                 return default
 
         as_norm = _safe_get("asNormFac", -1.0)
         iq_norm = _safe_get("iqNormFac", -1.0)
-        as_norm_corr = _safe_get("asNormFac_corrr", -1.0)
+        as_norm_corr = _safe_get("asNormFac_corrr", -1.0)  # Note: MATLAB has typo 'corrr'
+
+        print(f"      Norm factors: as={as_norm}, iq={iq_norm}, as_corr={as_norm_corr}")
 
         # Make sure lists exist and have correct length
         n = self._get_parameter_count(scaleinfo)
@@ -604,52 +605,46 @@ class SpectrumInfoStage(PipelineStage):
         """
         Compute delta_t, fresolution, samplerate, FFTsize from PSA data.
         """
-        # acqInfo is a MATLAB struct inside psadata
-        acq_info = psadata.get("acqInfo", None)
-        if isinstance(acq_info, np.ndarray):
-            acq_info = acq_info.item()
-
+        # acqInfo is a structured array
+        if "acqInfo" not in psadata:
+            raise KeyError("No 'acqInfo' in PSA data")
+        
+        acq_info = psadata["acqInfo"]
+        print(f"      acqInfo fields: {acq_info.dtype.names if hasattr(acq_info, 'dtype') else 'N/A'}")
+        
         # delta_t
         if "tot_run_time" in psadata:
             delta_t = float(np.squeeze(psadata["tot_run_time"]))
+            print(f"      delta_t from tot_run_time: {delta_t}")
         else:
-            if acq_info is None:
-                raise KeyError("No 'tot_run_time' or 'acqInfo' in PSA data")
-            # Depth * SegmentCount * nAcq / SampleRate
-            Depth = float(getattr(acq_info, "Depth"))
-            SegmentCount = float(getattr(acq_info, "SegmentCount"))
-            SampleRate = float(getattr(acq_info, "SampleRate"))
-            nAcq = float(psadata.get("nAcq", 1.0))
+            # Calculate from acqInfo
+            if 'SampleRate' not in acq_info.dtype.names:
+                raise KeyError("No 'SampleRate' in acqInfo")
+            
+            SampleRate = float(acq_info['SampleRate'][0, 0])
+            Depth = float(acq_info['Depth'][0, 0])
+            SegmentCount = float(acq_info['SegmentCount'][0, 0])
+            nAcq = float(psadata.get("nAcq", 1.0)[0, 0])
+            
             delta_t = Depth * SegmentCount * nAcq / SampleRate
+            print(f"      delta_t calculated: {delta_t}")
 
         # fresolution from frequency axis
         freq_Hz_spec = np.asarray(freq_Hz_spec).ravel()
         if freq_Hz_spec.size < 2:
             raise ValueError("freq_Hz_spec must have at least 2 points to compute fresolution")
         fresolution = float(abs(freq_Hz_spec[1] - freq_Hz_spec[0]))
+        print(f"      fresolution: {fresolution} Hz")
 
-        # samplerate
-        if acq_info is None:
-            raise KeyError("PSA data has no 'acqInfo' for SampleRate")
-        samplerate = float(getattr(acq_info, "SampleRate"))
+        # samplerate from acqInfo
+        if 'SampleRate' not in acq_info.dtype.names:
+            raise KeyError("No 'SampleRate' in acqInfo")
+        samplerate = float(acq_info['SampleRate'][0, 0])
+        print(f"      samplerate: {samplerate} Hz")
 
-        # FFTsize
-        if meanavgps is None:
-            meanavgps = psadata.get("meanavgps", None)
-            if isinstance(meanavgps, np.ndarray):
-                meanavgps = meanavgps.item()
-
-        if meanavgps is None:
-            raise KeyError("No 'meanavgps' for FFTsize calculation")
-
-        if hasattr(meanavgps, "singlesided_freqaxis"):
-            freq_axis = np.asarray(meanavgps.singlesided_freqaxis)
-        elif isinstance(meanavgps, np.void) and "singlesided_freqaxis" in meanavgps.dtype.names:
-            freq_axis = np.asarray(meanavgps["singlesided_freqaxis"])
-        else:
-            raise KeyError("Cannot find 'singlesided_freqaxis' in meanavgps")
-
-        FFTsize = int((freq_axis.size - 1) * 2)
+        # FFTsize from frequency axis length
+        FFTsize = int((freq_Hz_spec.size - 1) * 2)
+        print(f"      FFTsize: {FFTsize}")
 
         return delta_t, fresolution, samplerate, FFTsize
 
