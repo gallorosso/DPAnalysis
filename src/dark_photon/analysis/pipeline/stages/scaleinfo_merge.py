@@ -41,6 +41,8 @@ class ScaleinfoMergeStage(PipelineStage):
     """
 
     def execute(self, context: PipelineContext, data: Dict[str, Any]) -> Dict[str, Any]:
+        print("  Merging scaleinfo and applying frequency overrides (if enabled).")
+
         # 1) Get all stage results
         par_res = data.get("parameter_loading")
         tx_res = data.get("transmission_analysis") 
@@ -48,14 +50,19 @@ class ScaleinfoMergeStage(PipelineStage):
         jpa_res = data.get("jpa_analysis")
         
         # 2) Start with parameter scaleinfo
-        scaleinfo = dict(par_res.scaleinfo) if par_res else {}
+        if par_res is None or not par_res.scaleinfo:
+            raise ValueError("ScaleinfoMergeStage requires parameter_loading.scaleinfo")
+        
+        scaleinfo = dict(par_res.scaleinfo)
         
         # 3) Merge ALL updates (not just TX and RFL)
-        if tx_res and tx_res.scaleinfo_updates:
+        if tx_res is not None and tx_res.scaleinfo_updates:
             scaleinfo.update(tx_res.scaleinfo_updates)
-        if rfl_res and rfl_res.scaleinfo_updates:
+        
+        if rfl_res is not None and rfl_res.scaleinfo_updates:
             scaleinfo.update(rfl_res.scaleinfo_updates)
-        if jpa_res and jpa_res.scaleinfo_updates:
+        
+        if jpa_res is not None and jpa_res.scaleinfo_updates:
             scaleinfo.update(jpa_res.scaleinfo_updates)
         
         # 4) Add derived parameters like Cavity_Q, coupling_factor
@@ -65,6 +72,7 @@ class ScaleinfoMergeStage(PipelineStage):
         if getattr(context.options, "freqs_from_par", False):
             scaleinfo = self._apply_freqs_from_par_override(scaleinfo)
         
+        # Store the final, authoritative scaleinfo in the pipeline data
         data["scaleinfo"] = scaleinfo
         return data
 
@@ -142,3 +150,39 @@ class ScaleinfoMergeStage(PipelineStage):
 
         print("  ✓ Scaleinfo merge and overrides validated")
         return True
+    
+    def _add_cavity_parameters(self, scaleinfo: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Add Cavity_Q and coupling_factor to scaleinfo.
+        
+        Extracts these from txparams and freq_beta arrays.
+        """
+        print("    Adding cavity parameters to scaleinfo...")
+        
+        # Add Cavity_Q from txparams[:, 2] (Q is 3rd parameter, 0-indexed)
+        if "txparams" in scaleinfo:
+            txparams = np.asarray(scaleinfo["txparams"])
+            if txparams.ndim == 2 and txparams.shape[1] >= 3:
+                # Column 2 (0-indexed) is Q
+                Cavity_Q = txparams[:, 2].tolist()
+                scaleinfo["Cavity_Q"] = Cavity_Q
+                print(f"      Added Cavity_Q: {len(Cavity_Q)} values")
+            else:
+                print(f"      WARNING: txparams has wrong shape: {txparams.shape}")
+        
+        # Add coupling_factor from freq_beta[:, 1] (beta is 2nd column)
+        if "freq_beta" in scaleinfo:
+            freq_beta = np.asarray(scaleinfo["freq_beta"])
+            if freq_beta.ndim == 2 and freq_beta.shape[1] >= 2:
+                # Column 1 (0-indexed) is beta
+                coupling_factor = freq_beta[:, 1].tolist()
+                scaleinfo["coupling_factor"] = coupling_factor
+                print(f"      Added coupling_factor: {len(coupling_factor)} values")
+            else:
+                print(f"      WARNING: freq_beta has wrong shape: {freq_beta.shape}")
+        
+        # Debug: Print array lengths to verify
+        if "Cavity_Q" in scaleinfo and "coupling_factor" in scaleinfo:
+            print(f"      Cavity_Q length: {len(scaleinfo['Cavity_Q'])}, coupling_factor length: {len(scaleinfo['coupling_factor'])}")
+        
+        return scaleinfo
