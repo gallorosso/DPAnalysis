@@ -16,6 +16,7 @@ from src.dark_photon.analysis import create_preprocessing_pipeline, PipelineCont
 from src.dark_photon.plotting import plot_tx_summary, plot_rfl_summary
 from src.dark_photon.plotting.styles import apply_default_style
 from src.dark_photon.plotting.jpa import plot_jpa_gain_profiles, plot_jpa_summary
+from src.dark_photon.plotting.spectrum import plot_align_norm, plot_spectrum_diagnostics, plot_squeezing_calibration
 
 import numpy as np
 
@@ -86,6 +87,9 @@ def main():
         # JPA plots
         # plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, file_enum.files, plot_dir, show=False)
         plot_jpa_summary(jpa_res.scaleinfo_updates, scaleinfo, plot_dir, show=False)
+        plot_align_norm(scaleinfo, plot_dir)
+        plot_spectrum_diagnostics(scaleinfo, plot_dir)
+        plot_squeezing_calibration(scaleinfo, plot_dir)
 
     
     print("=" * 60)
