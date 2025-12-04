@@ -2,107 +2,107 @@
 
 # System Parameters (from SystemPars) - THESE ARE REQUIRED FIELDS
 system:
-  t_fridge_K: 0.060
-  t_VTS_K: 0.290
-  lam: 0.674
-  # alpha and rho not specified - will use defaults with warning
-  V_cav: 0.001545
-  B_0: 8
+    t_fridge_K: 0.060
+    t_VTS_K: 0.290
+    lam: 0.674
+    # alpha and rho not specified - will use defaults with warning
+    V_cav: 0.001545
+    B_0: 8
 
 # RFI Mitigation (from ProcessingPars worm cuts)
 rfi_mitigation:
-  # General parameters
-  RFcutsigma: 10000000.0
-  IFcutsigma: 4.5
-  wormcut_width: 0.0002  # 20*10^(-5) GHz
-  
-  # Phase-specific cuts
-  cuts: []  # Empty for now to avoid RFICut issues
+    # General parameters
+    RFcutsigma: 10000000.0
+    IFcutsigma: 4.5
+    wormcut_width: 0.0002 # 20*10^(-5) GHz
+
+    # Phase-specific cuts
+    cuts: [] # Empty for now to avoid RFICut issues
 
 # Data Quality Cuts (from CutPars)
 data_quality:
-  # General
-  remove_bad_scans: true
-  tx_drift_khz: 60
-  rfl_drift_khz: 60
-  
-  # Gain thresholds
-  amp_gain: 1
-  sq_gain: 1
-  squeezing_db: 1.0
-  squeezing_peak_db: 0.13
-  amp_gain_diff: 1000000
-  sq_gain_diff: 1000000
-  gain_diff_dB: 0.4
-  
-  # Physical limits
-  NH_lim: [0, 500]
-  
-  # Statistical cuts
-  param_std: 3
-  param_std_std: 3
-  smooth_width: 10
-  find_smoothing_regions: true
-  freq_jump_GHz: 0.0006  # 600e-6 GHz
-  
-  # Integration time
-  int_time_min: 100
-  
-  # Hard file exclusions (when hard_file_cut = true)
-  spec_date_cut: [20230126, 20230218, 20230306, 20230523, 20230524]
-  spec_file_cut:
-    - [20221018, 0, 2]   # RF Antenna was On
-    - [20221012, 0, 35]  # RF Antenna was On
+    # General
+    remove_bad_scans: true
+    tx_drift_khz: 60
+    rfl_drift_khz: 60
+
+    # Gain thresholds
+    amp_gain: 1
+    sq_gain: 1
+    squeezing_db: 1.0
+    squeezing_peak_db: 0.13
+    amp_gain_diff: 1000000
+    sq_gain_diff: 1000000
+    gain_diff_dB: 0.4
+
+    # Physical limits
+    NH_lim: [0, 500]
+
+    # Statistical cuts
+    param_std: 3
+    param_std_std: 3
+    smooth_width: 10
+    find_smoothing_regions: true
+    freq_jump_GHz: 0.0006 # 600e-6 GHz
+
+    # Integration time
+    int_time_min: 100
+
+    # Hard file exclusions (when hard_file_cut = true)
+    spec_date_cut: [20230126, 20230218, 20230306, 20230523, 20230524]
+    spec_file_cut:
+        - [20221018, 0, 2] # RF Antenna was On
+        - [20221012, 0, 35] # RF Antenna was On
 
 # Processing Parameters (from ProcessingPars)
 processing:
-  # Calibration parameters
-  calibration:
-    ScNhGs_lims:
-      Gs: [0.02, 1.0]
-      NH: [5, 1000]
-      Sc: [0.38, 0.435]
-    HEMT_Noise_K: 3.0
-    smooth_fac: 1000
-    abg_freq_Hz: 200000
-    yfac_probe_corr: true
-    pr_loc_kHz_JPA: 200
-    pr_loc_kHz_JPA2: 1000
-    pr_loc_kHz_data: [10, 2000]
-    IFdiploc_MHz: [0.045, 0.050]
-    Scwindow_Hz: [45000, 400000]  # [0.045, 0.4]*1e6
-    amp_gain_1Q_meas_start: 20191028
-    Y_factor_moved_start: 20190925
-    Y_detuning_MHz: [2, 3]
-    probe_tone_width_Hz: 10
-    noise_gap_bins: 20
-    noise_width_bins: 10
-    abg_yfac_width: 100
-  
-  # Fitting parameters
-  fitting:
-    use_smart_init: true
-    init_params_tx: [0.0003, 4.172, 5845, -0.0347, 0.145]
-    init_params_rfl: [-0.0017, 4.1605, -6500, -0.02, 0.0865]
-    load_fits: true
-    tx_fit_buffer_bins: 5
-    tx_fit_width_sigma: 2.0
-    rfl_fit_buffer_bins: 5
-    rfl_fit_width_sigma: 3.0
-    jpa_fit_width_sigma: 5.0
-    jpa_fit_buffer_bins: 5
-    r_JPA_prof_cut: 5
-    JPA_gbw_prod: 81500000.0  # 8.15e7
-  
-  # Filter parameters
-  filters:
-    sg_win_Hz: 100000  # 100e3
-    fitorder: 10
-    fitorder2: 4
-  
-  # Other processing parameters
-  psasign: '-'
-  binavg: 1
-  num_baselines: 1
-  IFwindow: [45000, 1345000]  # [0.045, 1.345]*1e6 for dates >= 20190925
-  LowPass_MHz: 1.9clear
+    # Calibration parameters
+    calibration:
+        ScNhGs_lims:
+            Gs: [0.02, 1.0]
+            NH: [5, 1000]
+            Sc: [0.38, 0.435]
+        HEMT_Noise_K: 3.0
+        smooth_fac: 1000
+        abg_freq_Hz: 200000
+        yfac_probe_corr: true
+        pr_loc_kHz_JPA: 200
+        pr_loc_kHz_JPA2: 1000
+        pr_loc_kHz_data: [10, 2000]
+        IFdiploc_MHz: [0.045, 0.050]
+        Scwindow_Hz: [45000, 400000] # [0.045, 0.4]*1e6
+        amp_gain_1Q_meas_start: 20191028
+        Y_factor_moved_start: 20190925
+        Y_detuning_MHz: [2, 3]
+        probe_tone_width_Hz: 10
+        noise_gap_bins: 20
+        noise_width_bins: 10
+        abg_yfac_width: 100
+
+    # Fitting parameters
+    fitting:
+        use_smart_init: true
+        init_params_tx: [0.0003, 4.172, 5845, -0.0347, 0.145]
+        init_params_rfl: [-0.0017, 4.1605, -6500, -0.02, 0.0865]
+        load_fits: true
+        tx_fit_buffer_bins: 5
+        tx_fit_width_sigma: 2.0
+        rfl_fit_buffer_bins: 5
+        rfl_fit_width_sigma: 3.0
+        jpa_fit_width_sigma: 5.0
+        jpa_fit_buffer_bins: 5
+        r_JPA_prof_cut: 5
+        JPA_gbw_prod: 81500000.0 # 8.15e7
+
+    # Filter parameters
+    filters:
+        sg_win_Hz: 100000 # 100e3
+        fitorder: 10
+        fitorder2: 4
+
+    # Other processing parameters
+    psasign: "-"
+    binavg: 1
+    num_baselines: 1
+    IFwindow: [45000, 1345000] # [0.045, 1.345]*1e6 for dates >= 20190925
+    LowPass_MHz: 1.9

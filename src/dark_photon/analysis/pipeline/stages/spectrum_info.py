@@ -151,10 +151,10 @@ class SpectrumInfoStage(PipelineStage):
                 probe_scale_arr[i] = probe_scale
 
                 # --- 5.5 Norm factors ---
-                as_norm_fac, iq_norm_fac, as_norm_fac_corr = self._extract_norm_factors(psadata)
-                as_norm_fac_arr[i] = as_norm_fac
-                iq_norm_fac_arr[i] = iq_norm_fac
-                as_norm_fac_corr_arr[i] = as_norm_fac_corr
+                self._extract_norm_factors_to_arrays(psadata, i, as_norm_fac_arr, iq_norm_fac_arr, as_norm_fac_corr_arr)
+                # as_norm_fac_arr[i] = as_norm_fac
+                # iq_norm_fac_arr[i] = iq_norm_fac
+                # as_norm_fac_corr_arr[i] = as_norm_fac_corr
 
                 # --- 5.6 DAQ parameters ---
                 delta_t, fresolution, samplerate, FFTsize = self._compute_daq_parameters(psadata, freq_Hz_spec)
@@ -341,64 +341,6 @@ class SpectrumInfoStage(PipelineStage):
         
         return data
 
-
-    def _process_single_spectrum(
-        self,
-        idx: int,
-        tx2_file: Path,
-        scaleinfo: Dict[str, Any],
-        proc_par: Any,
-    ) -> Dict[str, Any]:
-        """
-        Process one spectrum file: load PSA, extract spectrum, compute probe_scale,
-        norm factors, and DAQ parameters.
-
-        Corresponds to the first half of LoadSpectrumInfo.m, up to DAQ parameters.
-        """
-        # 1) Get the PSA filename and date / it / parnum (point 1 you already implemented)
-        psafile, spectrum_date, spectrum_it, spectrum_par_num = self._get_psa_filename_and_info(
-            tx2_file
-        )
-
-        scaleinfo["spectrum_date"][idx] = spectrum_date
-        scaleinfo["spectrum_it"][idx] = spectrum_it
-        scaleinfo["spectrum_par_num"][idx] = spectrum_par_num
-
-        # 2) Load PSA data
-        psadata = self._load_psa_data(psafile)
-
-        # 3) Extract spectrum + GA
-        dat_spec, dat_spec_sq, freq_Hz_spec, GA = self._extract_spectrum(psadata)
-
-        # 4) Compute probe_scale and write into scaleinfo
-        probe_scale = self._compute_probe_scale(scaleinfo, idx)
-
-        # 5) Normalization factors (as_norm_fac, iq_norm_fac, as_norm_fac_corr)
-        self._extract_norm_factors(psadata, scaleinfo, idx)
-
-        # 6) DAQ parameters (delta_t, fresolution, samplerate, FFTsize)
-        meanavgps = psadata.get("meanavgps", None)
-        if isinstance(meanavgps, np.ndarray):
-            meanavgps = meanavgps.item()
-        delta_t, fresolution, samplerate, FFTsize = self._compute_daq_parameters(
-            psadata, freq_Hz_spec, meanavgps
-        )
-
-        # For now we just *return* these; later we will continue with IFdip,
-        # IF window, and all the scaleinfo.* fields that depend on them.
-        return {
-            "dat_spec": dat_spec,
-            "dat_spec_sq": dat_spec_sq,
-            "freq_Hz_spec": freq_Hz_spec,
-            "GA": GA,
-            "probe_scale": probe_scale,
-            "delta_t": delta_t,
-            "fresolution": fresolution,
-            "samplerate": samplerate,
-            "FFTsize": FFTsize,
-            "psafile": psafile,
-        }
-
     def _get_psa_file_and_metadata(self, tx2_file: Path) -> Tuple[Path, int, int, int]:
         """
         Build PSA filename and parse metadata from the base filename.
@@ -536,21 +478,25 @@ class SpectrumInfoStage(PipelineStage):
         MATLAB: probe_scale = QL*(beta/(1+beta))
         """
         try:
+            print(f"      DEBUG: idx={idx}, Cavity_Q length={len(scaleinfo.get('Cavity_Q', []))}, coupling_factor length={len(scaleinfo.get('coupling_factor', []))}")
+            
             # Get from scaleinfo if available
             if "Cavity_Q" in scaleinfo and "coupling_factor" in scaleinfo:
-                QL = float(scaleinfo["Cavity_Q"][idx])
-                beta = float(scaleinfo["coupling_factor"][idx])
-                probe_scale = QL * (beta / (1.0 + beta))
-                print(f"      probe_scale: QL={QL}, beta={beta} -> {probe_scale:.6f}")
-                return probe_scale
+                QL_list = scaleinfo["Cavity_Q"]
+                beta_list = scaleinfo["coupling_factor"]
+                
+                if idx < len(QL_list) and idx < len(beta_list):
+                    QL = float(QL_list[idx])
+                    beta = float(beta_list[idx])
+                    probe_scale = QL * (beta / (1.0 + beta))
+                    print(f"      probe_scale: QL={QL}, beta={beta} -> {probe_scale:.6f}")
+                    return probe_scale
+                else:
+                    print(f"      WARNING: Index {idx} out of range for cavity parameters")
+                    print(f"      QL list length: {len(QL_list)}, beta list length: {len(beta_list)}")
+                    return 1.0  # Default fallback
             else:
-                print(f"      WARNING: Cavity_Q or coupling_factor not in scaleinfo at index {idx}")
-                print(f"      scaleinfo keys: {list(scaleinfo.keys())}")
-                # Check if these are in the data at all
-                if "Cavity_Q" not in scaleinfo:
-                    print(f"      Cavity_Q missing entirely")
-                if "coupling_factor" not in scaleinfo:
-                    print(f"      coupling_factor missing entirely")
+                print(f"      WARNING: Cavity_Q or coupling_factor not in scaleinfo")
                 return 1.0  # Default fallback
         except Exception as e:
             print(f"      Could not calculate probe_scale: {e}")
@@ -561,14 +507,53 @@ class SpectrumInfoStage(PipelineStage):
     # --- MATLAB:
     # (as_norm_fac, iq_norm_fac, as_norm_fac_corr with try/catch)
     # ---
-    def _extract_norm_factors(
+    # def _extract_norm_factors(
+    #     self,
+    #     psadata: Dict[str, Any],
+    #     scaleinfo: Dict[str, Any],
+    #     idx: int,
+    # ) -> None:
+    #     """
+    #     Extract AS / IQ normalization factors and store in scaleinfo.
+    #     """
+    #     meanavgps = psadata.get("meanavgps", None)
+        
+    #     def _safe_get(field_name: str, default: float = -1.0) -> float:
+    #         try:
+    #             if meanavgps is not None and field_name in meanavgps.dtype.names:
+    #                 # Access the field correctly
+    #                 field_data = meanavgps[field_name][0, 0]
+    #                 return float(np.squeeze(field_data))
+    #             return default
+    #         except Exception:
+    #             return default
+
+    #     as_norm = _safe_get("asNormFac", -1.0)
+    #     iq_norm = _safe_get("iqNormFac", -1.0)
+    #     as_norm_corr = _safe_get("asNormFac_corrr", -1.0)  # Note: MATLAB has typo 'corrr'
+
+    #     print(f"      Norm factors: as={as_norm}, iq={iq_norm}, as_corr={as_norm_corr}")
+
+    #     # Make sure lists exist and have correct length
+    #     n = self._get_parameter_count(scaleinfo)
+    #     for key in ("as_norm_fac", "iq_norm_fac", "as_norm_fac_corr"):
+    #         if key not in scaleinfo:
+    #             scaleinfo[key] = [-1.0] * n
+
+    #     scaleinfo["as_norm_fac"][idx] = as_norm
+    #     scaleinfo["iq_norm_fac"][idx] = iq_norm
+    #     scaleinfo["as_norm_fac_corr"][idx] = as_norm_corr
+
+    def _extract_norm_factors_to_arrays(
         self,
         psadata: Dict[str, Any],
-        scaleinfo: Dict[str, Any],
         idx: int,
+        as_norm_fac_arr: np.ndarray,
+        iq_norm_fac_arr: np.ndarray,
+        as_norm_fac_corr_arr: np.ndarray,
     ) -> None:
         """
-        Extract AS / IQ normalization factors and store in scaleinfo.
+        Extract AS / IQ normalization factors into arrays.
         """
         meanavgps = psadata.get("meanavgps", None)
         
@@ -586,17 +571,11 @@ class SpectrumInfoStage(PipelineStage):
         iq_norm = _safe_get("iqNormFac", -1.0)
         as_norm_corr = _safe_get("asNormFac_corrr", -1.0)  # Note: MATLAB has typo 'corrr'
 
+        as_norm_fac_arr[idx] = as_norm
+        iq_norm_fac_arr[idx] = iq_norm
+        as_norm_fac_corr_arr[idx] = as_norm_corr
+        
         print(f"      Norm factors: as={as_norm}, iq={iq_norm}, as_corr={as_norm_corr}")
-
-        # Make sure lists exist and have correct length
-        n = self._get_parameter_count(scaleinfo)
-        for key in ("as_norm_fac", "iq_norm_fac", "as_norm_fac_corr"):
-            if key not in scaleinfo:
-                scaleinfo[key] = [-1.0] * n
-
-        scaleinfo["as_norm_fac"][idx] = as_norm
-        scaleinfo["iq_norm_fac"][idx] = iq_norm
-        scaleinfo["as_norm_fac_corr"][idx] = as_norm_corr
 
     # --- MATLAB:
     # try
