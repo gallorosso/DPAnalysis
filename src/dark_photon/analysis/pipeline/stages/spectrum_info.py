@@ -491,20 +491,22 @@ class SpectrumInfoStage(PipelineStage):
         if meanavgps is None:
             raise KeyError("PSA data has no 'meanavgps' field")
 
-        # SciPy often gives a numpy.void or a small ndarray; handle both
-        if isinstance(meanavgps, np.ndarray):
-            meanavgps = meanavgps.item()  # flatten (1, 1) -> struct-like
+        # Access the structured array correctly
+        # meanavgps is (1, 1) array containing a struct
+        # We need to access the struct at [0, 0] then get the field
+        # meanavgps_struct = meanavgps[0, 0]
+        
+        # Now access the fields within the struct
+        if 'singlesided_powerspecavg' not in meanavgps.dtype.names:
+            raise KeyError(f"'meanavgps' has no field 'singlesided_powerspecavg'. Available: {meanavgps.dtype.names}")
+        
+        # Get the field - it's also an array that might need [0, 0]
+        singlesided_powerspecavg = meanavgps['singlesided_powerspecavg'][0, 0]
+        singlesided_powerspecavg_sq = meanavgps['singlesided_powerspecavg_sq'][0, 0]
+        singlesided_freqaxis = meanavgps['singlesided_freqaxis'][0, 0]
 
-        def _get_field(obj, name: str) -> np.ndarray:
-            if hasattr(obj, name):
-                return np.asarray(getattr(obj, name))
-            if isinstance(obj, np.void) and name in obj.dtype.names:
-                return np.asarray(obj[name])
-            raise KeyError(f"'meanavgps' has no field '{name}'")
-
-        singlesided_powerspecavg = _get_field(meanavgps, "singlesided_powerspecavg")
-        singlesided_powerspecavg_sq = _get_field(meanavgps, "singlesided_powerspecavg_sq")
-        singlesided_freqaxis = _get_field(meanavgps, "singlesided_freqaxis")
+        print(f"      singlesided_powerspecavg shape: {singlesided_powerspecavg.shape}")
+        print(f"      singlesided_freqaxis shape: {singlesided_freqaxis.shape}")
 
         dat_spec = np.squeeze(singlesided_powerspecavg) / GA
         dat_spec_sq = np.squeeze(singlesided_powerspecavg_sq)
