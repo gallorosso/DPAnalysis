@@ -63,7 +63,7 @@ def main():
     if "spectrum_info" in results:
         spectrum_res = results["spectrum_info"]
         print(f"SpectrumInfoStage status: {spectrum_res.status}")
-        print(f"SpectrumInfoStage updates keys: {list(spectrum_res.scaleinfo_updates.keys())}")
+        # print(f"SpectrumInfoStage updates keys: {list(spectrum_res.scaleinfo_updates.keys())}")
         
         # Check a specific field
         if "pr_height" in spectrum_res.scaleinfo_updates:
