@@ -44,6 +44,14 @@ def plot_spectrum_diagnostics(scaleinfo: dict, outdir: Path, show: bool = False)
     """
     Plot a grid of spectral diagnostics (probe height, IF dip, IF band power, etc).
     """
+    print(f"DEBUG: Received scaleinfo keys: {list(scaleinfo.keys())}")
+    
+    # Check if we have the required data
+    required_keys = ["spectrum_date", "pr_height", "pr_height_sqz", "IFdipheight"]
+    missing = [k for k in required_keys if k not in scaleinfo]
+    if missing:
+        print(f"WARNING: Missing required keys: {missing}")
+        return  # Early return to avoid empty plot
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 

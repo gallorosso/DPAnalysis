@@ -62,6 +62,8 @@ class SpectrumInfoStage(PipelineStage):
         files: List[Path] = file_enum.files
         num_files = len(files)
 
+        print(f"    Total files to process: {num_files}")
+
         merged_scaleinfo: Dict[str, Any] = data.get("scaleinfo")
         if merged_scaleinfo is None:
             raise ValueError("Merged scaleinfo not found; ScaleinfoMergeStage must run before SpectrumInfoStage")
@@ -115,20 +117,32 @@ class SpectrumInfoStage(PipelineStage):
 
         filename_list: List[str] = [""] * num_files
 
+        # ADD DEBUG TRACKING
+        processed_count = 0
+        successful_count = 0
+        error_files = []
         for i, tx2_file in enumerate(files):
             try:
+                processed_count += 1
+                
                 # --- 5.1 PSA filename + metadata ---
                 psa_file, spectrum_date, spectrum_it, spectrum_par_num = self._get_psa_file_and_metadata(tx2_file)
-                spectrum_date_arr[i] = spectrum_date
-                spectrum_it_arr[i] = spectrum_it
-                spectrum_par_num_arr[i] = spectrum_par_num
-
+                
+                print(f"    Processing file {i+1}/{num_files}: {psa_file.name}")
+                
+                # Check if PSA file exists
+                if not psa_file.exists():
+                    print(f"      WARNING: PSA file not found: {psa_file}")
+                    error_files.append((tx2_file.name, "PSA file not found"))
+                    continue
+                    
                 # --- 5.2 Load PSA MAT file ---
                 psadata = self._load_psa_data(psa_file)
-
+                
                 # --- 5.3 Spectrum & freq axis ---
                 dat_spec, dat_spec_sq, freq_Hz_spec, GA = self._extract_spectrum(psadata)
-
+                print(f"      Extracted spectrum: {len(dat_spec)} points, GA={GA:.2f}")
+                
                 # --- 5.4 Probe scale ---
                 probe_scale = self._compute_probe_scale(psadata, proc_par, freq_Hz_spec)
                 probe_scale_arr[i] = probe_scale
@@ -210,9 +224,37 @@ class SpectrumInfoStage(PipelineStage):
                     fitnumber_list_arr[i] = fitnum
                     fitnumber2_arr[i] = fitnum
 
+                successful_count += 1
+                
+                if (i + 1) % 10 == 0:
+                    print(f"      Progress: {i+1}/{num_files} files processed ({successful_count} successful)")
+                    
             except Exception as e:
-                warnings.warn(f"Error processing PSA spectrum for {tx2_file}: {e}")
+                error_msg = f"Error processing PSA spectrum for {tx2_file}: {e}"
+                print(f"      ERROR: {error_msg}")
+                warnings.warn(error_msg)
+                error_files.append((tx2_file.name, str(e)))
                 continue
+
+        # ADD DEBUG SUMMARY
+        print(f"\n    SpectrumInfoStage Summary:")
+        print(f"      Total files: {num_files}")
+        print(f"      Attempted to process: {processed_count}")
+        print(f"      Successfully processed: {successful_count}")
+        print(f"      Failed files: {len(error_files)}")
+        
+        if error_files:
+            print(f"      First 5 errors:")
+            for i, (filename, error) in enumerate(error_files[:5]):
+                print(f"        {i+1}. {filename}: {error}")
+        
+        # Check if we have any valid data
+        valid_indices = ~np.isnan(probe_scale_arr)
+        valid_count = np.sum(valid_indices)
+        print(f"      Valid probe_scale values: {valid_count}/{num_files}")
+        
+        if valid_count == 0:
+            print("      WARNING: No valid spectrum data was loaded!")
 
         # 6) Post-loop: global fitnumber = first non-zero fitnumber_list
         scaleinfo_updates: Dict[str, Any] = {}
@@ -293,6 +335,7 @@ class SpectrumInfoStage(PipelineStage):
             status="success",
         )
         data["spectrum_info"] = result
+        
         return data
 
 
@@ -360,12 +403,20 @@ class SpectrumInfoStage(PipelineStage):
         MATLAB:
             [psafile, spectrum_date, spectrum_it, spectrum_par_num] = stripfilename(files{i}, 'psa');
         """
-        # 1) Get file base (e.g. '/path/.../20220908_0_0_')
         file_base = self._get_file_base(tx2_file)
-
-        # 2) Derive PSA filename by appending 'psa.mat'
-        #    MATLAB stripfilename(files{i}, 'psa') effectively points to the PSA file
+    
+        # Debug output
+        print(f"      DEBUG: TX2 file: {tx2_file.name}")
+        print(f"      DEBUG: File base: {file_base}")
+        
+        # Derive PSA filename by appending 'psa.mat'
         psa_file = file_base.with_name(file_base.name + "psa.mat")
+        
+        print(f"      DEBUG: PSA file path: {psa_file}")
+        print(f"      DEBUG: PSA file exists: {psa_file.exists()}")
+        
+        if not psa_file.exists():
+            raise FileNotFoundError(f"PSA file not found: {psa_file}")
 
         # 3) Parse date, iteration, par number from the base name
         #    Expected format: 'YYYYMMDD_N_M_' (trailing underscore)
@@ -426,10 +477,14 @@ class SpectrumInfoStage(PipelineStage):
             freq_Hz_spec = psadata.meanavgps.singlesided_freqaxis;
         """
         # Gain amplitude power
+        # Gain amplitude power
         try:
             GA = float(np.squeeze(psadata["gain_amp_pow"]))
+            print(f"      DEBUG: gain_amp_pow found: GA = {GA}")
         except Exception as e:
-            raise KeyError(f"Could not read 'gain_amp_pow' from PSA data: {e}")
+            print(f"      DEBUG: Could not read 'gain_amp_pow': {e}")
+            print(f"      DEBUG: psadata keys: {list(psadata.keys())}")
+            raise
 
         # meanavgps is a nested MATLAB struct
         meanavgps = psadata.get("meanavgps", None)

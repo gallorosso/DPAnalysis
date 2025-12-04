@@ -59,6 +59,20 @@ def main():
     # Final scaleinfo from ScaleinfoMergeStage
     scaleinfo = results["scaleinfo"]
 
+    # Check if spectrum info was loaded
+    if "spectrum_info" in results:
+        spectrum_res = results["spectrum_info"]
+        print(f"SpectrumInfoStage status: {spectrum_res.status}")
+        print(f"SpectrumInfoStage updates keys: {list(spectrum_res.scaleinfo_updates.keys())}")
+        
+        # Check a specific field
+        if "pr_height" in spectrum_res.scaleinfo_updates:
+            pr_heights = spectrum_res.scaleinfo_updates["pr_height"]
+            valid = sum(1 for x in pr_heights if x != -1.0 and not np.isnan(x))
+            print(f"Valid pr_height values: {valid}/{len(pr_heights)}")
+        else:
+            print("WARNING: 'pr_height' not found in spectrum results")
+    
     # 2. Only generate plots if requested
     if options.plottrue:
         print("  Generating cavity summary plots.")
