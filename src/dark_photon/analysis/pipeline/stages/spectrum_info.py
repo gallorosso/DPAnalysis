@@ -570,63 +570,36 @@ class SpectrumInfoStage(PipelineStage):
         """
         freq_Hz_spec = np.asarray(freq_Hz_spec).ravel()
 
-        # quick_pad = ceil(100e3 / fresolution);
+        # MATLAB: quick_pad = ceil(100e3/fresolution);
         quick_pad = int(np.ceil(100e3 / fresolution))
 
-        # Calibration parameters live in proc_par.calibration (see YAML) 
-        calib = getattr(proc_par, "calibration", {})
-
-        # IF dip location in MHz (2-element vector)
-        IFdiploc_MHz = np.asarray(calib.get("IFdiploc_MHz", []), dtype=float).ravel()
-        if IFdiploc_MHz.size != 2:
-            raise ValueError("proc_par.calibration['IFdiploc_MHz'] must have length 2")
-
-        # IF window is already converted to Hz in ProcessingParameters._override_if_window 
-        IFwindow = np.asarray(getattr(proc_par, "IFwindow", []), dtype=float).ravel()
-        if IFwindow.size != 2:
-            raise ValueError("proc_par.IFwindow must have length 2 (in Hz)")
-
-        # Low-pass frequency in MHz
-        LowPass_MHz = getattr(proc_par, "LowPass_MHz", None)
-        if LowPass_MHz is None:
-            raise AttributeError("proc_par.LowPass_MHz is not defined")
-
-        # Probe location(s) in kHz – may be scalar or vector
-        pr_loc_kHz_data = np.asarray(calib.get("pr_loc_kHz_data", []), dtype=float)
-        if pr_loc_kHz_data.size == 0:
-            raise ValueError("proc_par.calibration['pr_loc_kHz_data'] is missing")
-
-        # --- MATLAB: IFdippts = find( ... IFdiploc_MHz(1)*1e6 .. IFdiploc_MHz(2)*1e6 ... );
-        IFdip_mask = (
-            (freq_Hz_spec >= IFdiploc_MHz[0] * 1e6)
-            & (freq_Hz_spec <= IFdiploc_MHz[1] * 1e6)
-        )
+        # IF dip region (proc_par.calibration['IFdiploc_MHz'] in Python)
+        IFdiploc_MHz = proc_par.calibration.get("IFdiploc_MHz", [0.0, 0.0])
+        IFdip_low = IFdiploc_MHz[0] * 1e6
+        IFdip_high = IFdiploc_MHz[1] * 1e6
+        IFdip_mask = (freq_Hz_spec >= IFdip_low) & (freq_Hz_spec <= IFdip_high)
         IFdippts = np.where(IFdip_mask)[0]
         if IFdippts.size == 0:
             raise ValueError("No points found in IF dip range")
         IFdipidx = (int(IFdippts[0]), int(IFdippts[-1]))
 
-        # --- MATLAB: IFwinpts = find((freq_Hz_spec>=IFwindow(1))&(freq_Hz_spec<=IFwindow(2)));
-        IFwin_mask = (
-            (freq_Hz_spec >= IFwindow[0])
-            & (freq_Hz_spec <= IFwindow[1])
-        )
+        # IF window (already in Hz in ProcessingParameters.__post_init__) 
+        IFwin_low = proc_par.IFwindow[0]
+        IFwin_high = proc_par.IFwindow[1]
+        IFwin_mask = (freq_Hz_spec >= IFwin_low) & (freq_Hz_spec <= IFwin_high)
         IFwinpts = np.where(IFwin_mask)[0]
         if IFwinpts.size == 0:
             raise ValueError("No points found in IF window range")
         IFwinidx = (int(IFwinpts[0]), int(IFwinpts[-1]))
 
-        # --- MATLAB: [~,lowpass_idx] = min(abs(proc_par.LowPass_MHz*1e6 - freq_Hz_spec));
-        lowpass_idx = int(
-            np.argmin(np.abs(float(LowPass_MHz) * 1e6 - freq_Hz_spec))
-        )
+        # Low-pass index (closest point to LowPass_MHz * 1e6)
+        lowpass_target = proc_par.LowPass_MHz * 1e6
+        lowpass_idx = int(np.argmin(np.abs(lowpass_target - freq_Hz_spec)))
 
-        # --- MATLAB: [~,pr_idx] = min(abs(proc_par.pr_loc_kHz_data*1000 - freq_Hz_spec));
-        # In MATLAB, pr_loc_kHz_data can be a vector; min() collapses both dims.
-        pr_targets_Hz = pr_loc_kHz_data.reshape(-1, 1) * 1000.0
-        diff = np.abs(pr_targets_Hz - freq_Hz_spec.reshape(1, -1))
-        flat_idx = int(np.argmin(diff))
-        pr_idx = flat_idx % freq_Hz_spec.size  # map back to 1D index
+        # Probe tone index (closest to pr_loc_kHz_data * 1000)
+        pr_loc_kHz = proc_par.calibration.get("pr_loc_kHz_data", 0.0)
+        pr_target = pr_loc_kHz * 1e3
+        pr_idx = int(np.argmin(np.abs(pr_target - freq_Hz_spec)))
 
         return quick_pad, IFdipidx, IFwinidx, lowpass_idx, pr_idx
 
@@ -646,16 +619,73 @@ class SpectrumInfoStage(PipelineStage):
         """
         Analyze sqzON / sqzOFF spectra if present.
 
-        MATLAB (inside try/catch):
-
-            sqz_vs_freq_dB = pow2db(psadata.meanavgps_sqzON.singlesided_powerspecavg ...
-                                    ./ psadata.meanavgps_sqzOFF.singlesided_powerspecavg);
-            avg_sqdB_off = mean(sqz_vs_freq_dB(IFwinidx(2):lowpass_idx));
-            peak_sqdB    = mean(sqz_vs_freq_dB(1:IFwinidx(1)));
-            avg_sqdB_IF  = mean(sqz_vs_freq_dB(IFwinidx(1):IFwinidx(2)));
-            ...
+        Mirrors the MATLAB logic that computes:
+          - sqz_vs_freq_dB, avg_sqdB_off, peak_sqdB, avg_sqdB_IF
+          - sum_power_in_IF_sq_sqOFF, sum_power_in_IF_sqOFF, sum_power_in_IF_sqON
         """
-        raise NotImplementedError
+        out: Dict[str, Any] = {
+            "avg_sqdB_off": np.nan,
+            "peak_sqdB": np.nan,
+            "avg_sqdB_IF": np.nan,
+            "sum_power_in_IF_sq_sqOFF": np.nan,
+            "sum_power_in_IF_sqOFF": np.nan,
+            "sum_power_in_IF_sqON": np.nan,
+        }
+
+        # meanavgps_sqzON / OFF may be MATLAB structs stored in arrays
+        meanavgps_sqzON = psadata.get("meanavgps_sqzON", None)
+        meanavgps_sqzOFF = psadata.get("meanavgps_sqzOFF", None)
+
+        if meanavgps_sqzON is None or meanavgps_sqzOFF is None:
+            return out
+
+        if isinstance(meanavgps_sqzON, np.ndarray):
+            meanavgps_sqzON = meanavgps_sqzON.item()
+        if isinstance(meanavgps_sqzOFF, np.ndarray):
+            meanavgps_sqzOFF = meanavgps_sqzOFF.item()
+
+        try:
+            on_spec = np.asarray(meanavgps_sqzON.singlesided_powerspecavg, dtype=float)
+            off_spec = np.asarray(meanavgps_sqzOFF.singlesided_powerspecavg, dtype=float)
+        except Exception:
+            return out
+
+        # Guard against zero / negative values in log
+        ratio = on_spec / off_spec
+        ratio = np.where(ratio > 0, ratio, np.nan)
+        sqz_vs_freq_dB = 10.0 * np.log10(ratio)
+
+        i1, i2 = IFwinidx
+
+        def _safe_mean(arr: np.ndarray) -> float:
+            arr = np.asarray(arr, dtype=float)
+            if arr.size == 0:
+                return np.nan
+            return float(np.nanmean(arr))
+
+        # MATLAB indices are inclusive; Python slices are [start:end)
+        # IFwinidx(2):lowpass_idx  -> i2-1 : lowpass_idx
+        out["avg_sqdB_off"] = _safe_mean(sqz_vs_freq_dB[i2: lowpass_idx + 1])
+        # 1:IFwinidx(1) -> 0 : i1
+        out["peak_sqdB"] = _safe_mean(sqz_vs_freq_dB[0: i1])
+        # IFwinidx(1):IFwinidx(2) -> i1-1 : i2
+        out["avg_sqdB_IF"] = _safe_mean(sqz_vs_freq_dB[i1: i2 + 1])
+
+        # OFF/ON spectra in "amp" units (divide by GA)
+        dat_spec_OFF = off_spec / GA
+        dat_spec_ON = on_spec / GA
+
+        band_OFF = dat_spec_OFF[i1: i2 + 1]
+        band_ON = dat_spec_ON[i1: i2 + 1]
+
+        sum_OFF = np.sum(band_OFF)
+        sum_ON = np.sum(band_ON)
+
+        out["sum_power_in_IF_sq_sqOFF"] = float(sum_OFF ** 2)
+        out["sum_power_in_IF_sqOFF"] = float(sum_OFF)
+        out["sum_power_in_IF_sqON"] = float(sum_ON)
+
+        return out
 
     def _compute_spectral_metrics(
         self,
@@ -673,106 +703,92 @@ class SpectrumInfoStage(PipelineStage):
         psadata: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
-        Compute baseline, probe heights, IF dip, IF sums, pr_power_stds, sigma_exp, fitnumber_list, fitnumber2.
-
-        This collects the MATLAB block around spec_bl, pr_height, pr_power_stds, etc.
+        Compute baseline, probe heights, IF dip, IF sums, pr_power, pr_power_stds, etc.
+        Mirrors the MATLAB logic in LoadSpectrumInfo.m.
         """
-        dat_spec = np.asarray(dat_spec).ravel()
-        dat_spec_sq = np.asarray(dat_spec_sq).ravel()
+        dat_spec = np.asarray(dat_spec, dtype=float).ravel()
+        dat_spec_sq = np.asarray(dat_spec_sq, dtype=float).ravel()
 
-        n = dat_spec.size
-        IFdip_lo, IFdip_hi = IFdipidx
-        IFwin_lo, IFwin_hi = IFwinidx
+        i1_dip, i2_dip = IFdipidx
+        i1_win, i2_win = IFwinidx
 
-        def _clip(lo: int, hi: int, n: int) -> Tuple[int, int]:
-            lo = max(lo, 0)
-            hi = min(hi, n - 1)
-            if hi < lo:
-                lo, hi = hi, lo
-            return lo, hi
+        # --- Baseline around probe tone ---
+        # MATLAB indices: pr_idx+10:pr_idx+30 and pr_idx-30:pr_idx-10 (inclusive)
+        # Python slices:  [pr_idx+10 : pr_idx+30+1], [pr_idx-30 : pr_idx-10+1]
+        def _safe_mean_slice(arr: np.ndarray, start: int, stop: int) -> float:
+            start = max(start, 0)
+            stop = min(stop, arr.size)
+            if start >= stop:
+                return np.nan
+            return float(np.nanmean(arr[start:stop]))
 
-        # --- spec_bl ---
-        hi_lo, hi_hi = _clip(pr_idx + 10, pr_idx + 30, n)
-        lo_lo, lo_hi = _clip(pr_idx - 30, pr_idx - 10, n)
+        mean_plus = _safe_mean_slice(dat_spec, pr_idx + 10, pr_idx + 31)
+        mean_minus = _safe_mean_slice(dat_spec, pr_idx - 30, pr_idx - 9)
+        spec_bl = 0.5 * (mean_plus + mean_minus)
 
-        high_seg = dat_spec[hi_lo : hi_hi + 1]
-        low_seg = dat_spec[lo_lo : lo_hi + 1]
+        # Probe heights (amp and squeezed)
+        pr_slice_start = max(pr_idx - 30, 0)
+        pr_slice_end = min(pr_idx + 31, dat_spec.size)
+        pr_height = float(np.nanmax(dat_spec[pr_slice_start:pr_slice_end]))
+        pr_height_sqz = float(np.nanmax(dat_spec_sq[pr_slice_start:pr_slice_end]))
 
-        spec_bl = float((np.nanmean(high_seg) + np.nanmean(low_seg)) / 2.0)
+        # IF dip minimum
+        dip_height = float(np.nanmin(dat_spec[i1_dip: i2_dip + 1]))
 
-        # --- pr_height and pr_height_sqz ---
-        h_lo, h_hi = _clip(pr_idx - 30, pr_idx + 30, n)
-        pr_height = float(np.nanmax(dat_spec[h_lo : h_hi + 1]))
-        pr_height_sqz = float(np.nanmax(dat_spec_sq[h_lo : h_hi + 1]))
+        # IF band powers / mean
+        band_sq = dat_spec_sq[i1_win: i2_win + 1]
+        band = dat_spec[i1_win: i2_win + 1]
 
-        # --- dip_height ---
-        d_lo, d_hi = _clip(IFdip_lo, IFdip_hi, n)
-        dip_height = float(np.nanmin(dat_spec[d_lo : d_hi + 1]))
+        sum_power_in_IF_sq = float(np.nansum(band_sq))
+        sum_power_in_IF = float(np.nansum(band))
 
-        # --- power in IF windows ---
-        IF_lo, IF_hi = _clip(IFwin_lo, IFwin_hi, n)
-        IF_slice = slice(IF_lo, IF_hi + 1)
+        # mean_of_spec over [IFwinidx(1):IFwinidx(2)+quick_pad-1]
+        mean_end = min(i2_win + quick_pad, dat_spec.size)
+        mean_of_spec = float(np.nanmean(dat_spec[i1_win:mean_end]))
 
-        sum_power_in_IF_sq = float(np.nansum(dat_spec_sq[IF_slice]))
-        sum_power_in_IF = float(np.nansum(dat_spec[IF_slice]))
-
-        # mean_of_spec uses IFwinidx(1):IFwinidx(2)+quick_pad-1
-        mean_hi = IF_hi + quick_pad - 1
-        m_lo, m_hi = _clip(IF_lo, mean_hi, n)
-        mean_of_spec = float(np.nanmean(dat_spec[m_lo : m_hi + 1]))
-
-        # --- pr_power_stds from psadata.meanavgps.pt_power_est_list ---
+        # --- pr_power from tone_power_PR_fordata (db2pow) ---
         meanavgps = psadata.get("meanavgps", None)
         if isinstance(meanavgps, np.ndarray):
             meanavgps = meanavgps.item()
 
-        # pt_power_est_list may be a cell array; in Python this is often a 1-D array of scalars
-        pt_power_est_list = None
-        if meanavgps is not None:
-            if hasattr(meanavgps, "pt_power_est_list"):
-                pt_power_est_list = getattr(meanavgps, "pt_power_est_list")
-            elif isinstance(meanavgps, np.void) and "pt_power_est_list" in meanavgps.dtype.names:
-                pt_power_est_list = meanavgps["pt_power_est_list"]
+        # Default pr_power = db2pow(-45 dB) if field is missing
+        try:
+            tone_power_PR_fordata = float(np.squeeze(psadata["tone_power_PR_fordata"]))
+        except Exception:
+            tone_power_PR_fordata = -45.0
+        pr_power = float(10.0 ** (tone_power_PR_fordata / 10.0))
 
-        if pt_power_est_list is None:
-            pr_power_stds_raw = 0.0
-        else:
-            arr = np.asarray(pt_power_est_list, dtype=float).ravel()
-            pr_power_stds_raw = float(np.nanstd(arr))
+        # --- pr_power_stds from meanavgps.pt_power_est_list ---
+        pr_power_stds = np.nan
+        if meanavgps is not None and hasattr(meanavgps, "pt_power_est_list"):
+            pt_list = getattr(meanavgps, "pt_power_est_list")
 
-        # We don't have scaleinfo.pr_power(i) here, but pr_power was computed earlier
-        # and stored in scaleinfo. In MATLAB they divide by sqrt(pr_power)*GA*probe_scale.
-        # For a faithful local metric, we just keep the same normalization; the caller
-        # should pass pr_power in if needed later.
-        # Here we assume the caller will rescale if desired; we expose pr_power_stds_raw.
-        # If you want the fully normalized quantity, you can extend this signature to accept pr_power.
-        pr_power_stds = pr_power_stds_raw  # normalization can be applied by caller
+            # pt_list may be MATLAB cell array -> numpy object array
+            arr = np.asarray(pt_list)
+            if arr.dtype == object:
+                arr = np.array(arr.tolist(), dtype=float).ravel()
+            else:
+                arr = arr.astype(float).ravel()
 
-        # --- sigma_exp and fitnumber_list/2 ---
-        binavg = getattr(proc_par, "binavg", 1.0)
-        sg_win_Hz = getattr(proc_par, "sg_win_Hz", 0.0)
+            if arr.size > 0 and pr_power > 0 and GA > 0 and probe_scale > 0:
+                raw_std = float(np.nanstd(arr, ddof=0))
+                # MATLAB:
+                # scaleinfo.pr_power_stds(i) = std(...)./sqrt(pr_power)./GA./probe_scale;
+                pr_power_stds = raw_std / np.sqrt(pr_power) / GA / probe_scale
 
-        with np.errstate(divide="ignore", invalid="ignore"):
-            sigma_exp = float(1.0 / np.sqrt(delta_t * fresolution * binavg))
+        # sigma_exp and fitnumber we'll compute outside this helper (where proc_par.binavg, sg_win_Hz live)
 
-        fitnumber_list = int(np.ceil(sg_win_Hz / fresolution) + 1)
-        fitnumber2 = fitnumber_list
-
-        return dict(
-            spec_bl=spec_bl,
-            pr_height=pr_height,
-            pr_height_sqz=pr_height_sqz,
-            dip_height=dip_height,
-            sum_power_in_IF_sq=sum_power_in_IF_sq,
-            sum_power_in_IF=sum_power_in_IF,
-            mean_of_spec=mean_of_spec,
-            pr_power_stds=pr_power_stds,
-            sigma_exp=sigma_exp,
-            fitnumber_list=fitnumber_list,
-            fitnumber2=fitnumber2,
-        )
-
-
+        return {
+            "spec_bl": spec_bl,
+            "pr_height": pr_height,
+            "pr_height_sqz": pr_height_sqz,
+            "dip_height": dip_height,
+            "sum_power_in_IF_sq": sum_power_in_IF_sq,
+            "sum_power_in_IF": sum_power_in_IF,
+            "mean_of_spec": mean_of_spec,
+            "pr_power": pr_power,
+            "pr_power_stds": pr_power_stds,
+        }
 
     def _extract_alignment_angle(self, psadata: Dict[str, Any]) -> float:
         """
