@@ -59,40 +59,50 @@ def main():
     # Final scaleinfo from ScaleinfoMergeStage
     scaleinfo = results["scaleinfo"]
 
-    # Check if spectrum info was loaded
-    if "spectrum_info" in results:
-        spectrum_res = results["spectrum_info"]
-        print(f"SpectrumInfoStage status: {spectrum_res.status}")
-        # print(f"SpectrumInfoStage updates keys: {list(spectrum_res.scaleinfo_updates.keys())}")
+    if 'Cavity_Q' in scaleinfo:
+        cav_q = scaleinfo['Cavity_Q']
+        print(f"Cavity_Q type: {type(cav_q)}, length: {len(cav_q) if hasattr(cav_q, '__len__') else 'scalar'}")
+        print(f"Cavity_Q first few values: {cav_q[:5] if len(cav_q) > 5 else cav_q}")
         
-        # Check a specific field
-        if "pr_height" in spectrum_res.scaleinfo_updates:
-            pr_heights = spectrum_res.scaleinfo_updates["pr_height"]
-            valid = sum(1 for x in pr_heights if x != -1.0 and not np.isnan(x))
-            print(f"Valid pr_height values: {valid}/{len(pr_heights)}")
-        else:
-            print("WARNING: 'pr_height' not found in spectrum results")
+    if 'coupling_factor' in scaleinfo:
+        beta = scaleinfo['coupling_factor']
+        print(f"coupling_factor type: {type(beta)}, length: {len(beta) if hasattr(beta, '__len__') else 'scalar'}")
+        print(f"coupling_factor first few values: {beta[:5] if len(beta) > 5 else beta}")
+
+    # # Check if spectrum info was loaded
+    # if "spectrum_info" in results:
+    #     spectrum_res = results["spectrum_info"]
+    #     print(f"SpectrumInfoStage status: {spectrum_res.status}")
+    #     # print(f"SpectrumInfoStage updates keys: {list(spectrum_res.scaleinfo_updates.keys())}")
+        
+    #     # Check a specific field
+    #     if "pr_height" in spectrum_res.scaleinfo_updates:
+    #         pr_heights = spectrum_res.scaleinfo_updates["pr_height"]
+    #         valid = sum(1 for x in pr_heights if x != -1.0 and not np.isnan(x))
+    #         print(f"Valid pr_height values: {valid}/{len(pr_heights)}")
+    #     else:
+            # print("WARNING: 'pr_height' not found in spectrum results")
     
     # 2. Only generate plots if requested
     if options.plottrue:
         print("  Generating cavity summary plots.")
         plot_dir = context.plot_dir or (options.output_dir / "plots")
-
-        # Retrieve results and scaleinfo - ADD JPA RESULTS
+        
+        # Retrieve results for plotting
         param_res = results["parameter_loading"]
         tx_res = results["transmission_analysis"]
         rfl_res = results["reflection_analysis"]
         jpa_res = results["jpa_analysis"]
         # file_enum = results["file_enumeration"]
-        if jpa_res:
-            print(f"✓ JPA analysis completed: {len(jpa_res.scaleinfo_updates.get('JPA_mse', []))} datasets")
-        else:
-            print("✗ JPA analysis failed or not found in results")
+        # if jpa_res:
+        #     print(f"✓ JPA analysis completed: {len(jpa_res.scaleinfo_updates.get('JPA_mse', []))} datasets")
+        # else:
+        #     print("✗ JPA analysis failed or not found in results")
 
-        scaleinfo = param_res.scaleinfo.copy()
-        scaleinfo.update(tx_res.scaleinfo_updates)
-        scaleinfo.update(rfl_res.scaleinfo_updates)
-        scaleinfo.update(jpa_res.scaleinfo_updates)
+        # scaleinfo = param_res.scaleinfo.copy()
+        # scaleinfo.update(tx_res.scaleinfo_updates)
+        # scaleinfo.update(rfl_res.scaleinfo_updates)
+        # scaleinfo.update(jpa_res.scaleinfo_updates)
 
         # TX summary
         plot_tx_summary(tx_res, scaleinfo, plot_dir, show=False)
