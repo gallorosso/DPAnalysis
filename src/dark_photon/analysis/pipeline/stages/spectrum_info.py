@@ -526,25 +526,37 @@ class SpectrumInfoStage(PipelineStage):
     # scaleinfo.probe_scale(i) = probe_scale;
     # ---
     def _compute_probe_scale(
-        self, scaleinfo: Dict[str, Any], idx: int
+        self,
+        scaleinfo: Dict[str, Any],
+        idx: int,
     ) -> float:
         """
-        Compute probe_scale and update scaleinfo['probe_scale'] for index idx.
+        Compute probe_scale using cavity Q and beta from scaleinfo.
+        
+        MATLAB: probe_scale = QL*(beta/(1+beta))
         """
         try:
-            QL = float(scaleinfo["Cavity_Q"][idx])
-            beta = float(scaleinfo["coupling_factor"][idx])
+            # Get from scaleinfo if available
+            if "Cavity_Q" in scaleinfo and "coupling_factor" in scaleinfo:
+                QL = float(scaleinfo["Cavity_Q"][idx])
+                beta = float(scaleinfo["coupling_factor"][idx])
+                probe_scale = QL * (beta / (1.0 + beta))
+                print(f"      probe_scale: QL={QL}, beta={beta} -> {probe_scale:.6f}")
+                return probe_scale
+            else:
+                print(f"      WARNING: Cavity_Q or coupling_factor not in scaleinfo at index {idx}")
+                print(f"      scaleinfo keys: {list(scaleinfo.keys())}")
+                # Check if these are in the data at all
+                if "Cavity_Q" not in scaleinfo:
+                    print(f"      Cavity_Q missing entirely")
+                if "coupling_factor" not in scaleinfo:
+                    print(f"      coupling_factor missing entirely")
+                return 1.0  # Default fallback
         except Exception as e:
-            raise KeyError(f"Missing 'Cavity_Q' or 'coupling_factor' in scaleinfo at index {idx}: {e}")
-
-        probe_scale = QL * (beta / (1.0 + beta))
-
-        # Ensure probe_scale list exists and is long enough
-        if "probe_scale" not in scaleinfo:
-            scaleinfo["probe_scale"] = [0.0] * self._get_parameter_count(scaleinfo)
-
-        scaleinfo["probe_scale"][idx] = probe_scale
-        return probe_scale
+            print(f"      Could not calculate probe_scale: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1.0  # Default fallback
 
     # --- MATLAB:
     # (as_norm_fac, iq_norm_fac, as_norm_fac_corr with try/catch)
