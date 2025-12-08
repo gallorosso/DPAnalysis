@@ -29,6 +29,7 @@ from ..results import (
     ParameterLoadingResult,
     TransmissionAnalysisResult,
     ReflectionAnalysisResult,
+    JPAGainAnalysisResult,
 )
 
 
@@ -43,35 +44,37 @@ class ScaleinfoMergeStage(PipelineStage):
     def execute(self, context: PipelineContext, data: Dict[str, Any]) -> Dict[str, Any]:
         print("  Merging scaleinfo and applying frequency overrides (if enabled).")
 
-        # 1) Get all stage results
-        par_res = data.get("parameter_loading")
-        tx_res = data.get("transmission_analysis") 
-        rfl_res = data.get("reflection_analysis")
-        jpa_res = data.get("jpa_analysis")
-        
-        # 2) Start with parameter scaleinfo
+        # 1) Get prerequisite stage results (including JPA)
+        par_res: ParameterLoadingResult = data.get("parameter_loading")
+        tx_res: TransmissionAnalysisResult = data.get("transmission_analysis")
+        rfl_res: ReflectionAnalysisResult = data.get("reflection_analysis")
+        # --- ADD THIS LINE ---
+        jpa_res: JPAGainAnalysisResult = data.get("jpa_analysis") 
+
         if par_res is None or not par_res.scaleinfo:
             raise ValueError("ScaleinfoMergeStage requires parameter_loading.scaleinfo")
-        
-        scaleinfo = dict(par_res.scaleinfo)
-        
-        # 3) Merge ALL updates (not just TX and RFL)
+
+        # Start from par-based scaleinfo (copy so we don't mutate the result object)
+        scaleinfo: Dict[str, Any] = dict(par_res.scaleinfo)
+
+        # 2) Merge in TX and RFL scaleinfo_updates (fit results)
         if tx_res is not None and tx_res.scaleinfo_updates:
-            scaleinfo.update(tx_res.scaleinfo_updates)
-        
+            for k, v in tx_res.scaleinfo_updates.items():
+                scaleinfo[k] = v
+
         if rfl_res is not None and rfl_res.scaleinfo_updates:
-            scaleinfo.update(rfl_res.scaleinfo_updates)
-        
+            for k, v in rfl_res.scaleinfo_updates.items():
+                scaleinfo[k] = v
+                
+        # --- ADD THIS BLOCK FOR JPA ---
         if jpa_res is not None and jpa_res.scaleinfo_updates:
-            scaleinfo.update(jpa_res.scaleinfo_updates)
-        
-        # 4) Add derived parameters like Cavity_Q, coupling_factor
-        scaleinfo = self._add_cavity_parameters(scaleinfo)
-        
-        # 5) Apply freqs_from_par override if requested
+            for k, v in jpa_res.scaleinfo_updates.items():
+                scaleinfo[k] = v
+
+        # 3) Apply freqs_from_par override if requested in options
         if getattr(context.options, "freqs_from_par", False):
             scaleinfo = self._apply_freqs_from_par_override(scaleinfo)
-        
+
         # Store the final, authoritative scaleinfo in the pipeline data
         data["scaleinfo"] = scaleinfo
         return data

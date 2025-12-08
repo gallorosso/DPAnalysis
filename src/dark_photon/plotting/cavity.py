@@ -59,9 +59,9 @@ def plot_tx_summary(
     # freq_drift_khz = freq_drift_ghz * 1000.0
 
     # Add this debug block:
-    print(f"DEBUG: params1[:, 1] shape: {params1[:, 1].shape}")
-    print(f"DEBUG: freq_drift_khz shape: {freq_drift_khz.shape}")
-    print(f"DEBUG: freq_drift_khz content: {freq_drift_khz}")
+    # print(f"DEBUG: params1[:, 1] shape: {params1[:, 1].shape}")
+    # print(f"DEBUG: freq_drift_khz shape: {freq_drift_khz.shape}")
+    # print(f"DEBUG: freq_drift_khz content: {freq_drift_khz}")
     # End debug block
 
     # TX peak amplitude (1st column)
