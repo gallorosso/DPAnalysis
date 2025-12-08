@@ -29,7 +29,6 @@ from ..results import (
     ParameterLoadingResult,
     TransmissionAnalysisResult,
     ReflectionAnalysisResult,
-    JPAGainAnalysisResult,
 )
 
 
@@ -44,37 +43,35 @@ class ScaleinfoMergeStage(PipelineStage):
     def execute(self, context: PipelineContext, data: Dict[str, Any]) -> Dict[str, Any]:
         print("  Merging scaleinfo and applying frequency overrides (if enabled).")
 
-        # 1) Get prerequisite stage results (including JPA)
-        par_res: ParameterLoadingResult = data.get("parameter_loading")
-        tx_res: TransmissionAnalysisResult = data.get("transmission_analysis")
-        rfl_res: ReflectionAnalysisResult = data.get("reflection_analysis")
-        # --- ADD THIS LINE ---
-        jpa_res: JPAGainAnalysisResult = data.get("jpa_analysis") 
-
+        # 1) Get all stage results
+        par_res = data.get("parameter_loading")
+        tx_res = data.get("transmission_analysis") 
+        rfl_res = data.get("reflection_analysis")
+        jpa_res = data.get("jpa_analysis")
+        
+        # 2) Start with parameter scaleinfo
         if par_res is None or not par_res.scaleinfo:
             raise ValueError("ScaleinfoMergeStage requires parameter_loading.scaleinfo")
-
-        # Start from par-based scaleinfo (copy so we don't mutate the result object)
-        scaleinfo: Dict[str, Any] = dict(par_res.scaleinfo)
-
-        # 2) Merge in TX and RFL scaleinfo_updates (fit results)
+        
+        scaleinfo = dict(par_res.scaleinfo)
+        
+        # 3) Merge ALL updates (not just TX and RFL)
         if tx_res is not None and tx_res.scaleinfo_updates:
-            for k, v in tx_res.scaleinfo_updates.items():
-                scaleinfo[k] = v
-
+            scaleinfo.update(tx_res.scaleinfo_updates)
+        
         if rfl_res is not None and rfl_res.scaleinfo_updates:
-            for k, v in rfl_res.scaleinfo_updates.items():
-                scaleinfo[k] = v
-                
-        # --- ADD THIS BLOCK FOR JPA ---
+            scaleinfo.update(rfl_res.scaleinfo_updates)
+        
         if jpa_res is not None and jpa_res.scaleinfo_updates:
-            for k, v in jpa_res.scaleinfo_updates.items():
-                scaleinfo[k] = v
-
-        # 3) Apply freqs_from_par override if requested in options
+            scaleinfo.update(jpa_res.scaleinfo_updates)
+        
+        # 4) Add derived parameters like Cavity_Q, coupling_factor
+        scaleinfo = self._add_cavity_parameters(scaleinfo)
+        
+        # 5) Apply freqs_from_par override if requested
         if getattr(context.options, "freqs_from_par", False):
             scaleinfo = self._apply_freqs_from_par_override(scaleinfo)
-
+        
         # Store the final, authoritative scaleinfo in the pipeline data
         data["scaleinfo"] = scaleinfo
         return data
@@ -84,12 +81,20 @@ class ScaleinfoMergeStage(PipelineStage):
         Implement the MATLAB freqs_from_par override logic on a scaleinfo dict.
         """
         print("    Applying freqs_from_par overrides using par-file frequencies.")
+    
+        # Debug: Check what we're working with
+        print(f"      cav_tx1 type: {type(scaleinfo.get('Cavity_freq_tx1'))}")
+        if hasattr(scaleinfo.get('Cavity_freq_tx1'), '__len__'):
+            print(f"      cav_tx1 length: {len(scaleinfo.get('Cavity_freq_tx1'))}")
 
         # Convert lists to numpy arrays for numerical operations
         cav_tx1 = np.asarray(scaleinfo["Cavity_freq_tx1"], dtype=float)
         cav_tx2 = np.asarray(scaleinfo["Cavity_freq_tx2"], dtype=float)
         cav_rfl1 = np.asarray(scaleinfo["Cavity_freq_rfl1"], dtype=float)
         cav_rfl2 = np.asarray(scaleinfo["Cavity_freq_rfl2"], dtype=float)
+
+        print(f"      cav_tx1 array shape: {cav_tx1.shape}")
+        print(f"      cav_tx2 array shape: {cav_tx2.shape}")
 
         txparams = np.asarray(scaleinfo["txparams"], dtype=float)    # (N, 5)
         rflparams = np.asarray(scaleinfo["rflparams"], dtype=float)  # (N, 5)

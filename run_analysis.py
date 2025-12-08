@@ -59,15 +59,15 @@ def main():
     # Final scaleinfo from ScaleinfoMergeStage
     scaleinfo = results["scaleinfo"]
 
-    if 'Cavity_Q' in scaleinfo:
-        cav_q = scaleinfo['Cavity_Q']
-        print(f"Cavity_Q type: {type(cav_q)}, length: {len(cav_q) if hasattr(cav_q, '__len__') else 'scalar'}")
-        print(f"Cavity_Q first few values: {cav_q[:5] if len(cav_q) > 5 else cav_q}")
+    # if 'Cavity_Q' in scaleinfo:
+    #     cav_q = scaleinfo['Cavity_Q']
+    #     print(f"Cavity_Q type: {type(cav_q)}, length: {len(cav_q) if hasattr(cav_q, '__len__') else 'scalar'}")
+    #     print(f"Cavity_Q first few values: {cav_q[:5] if len(cav_q) > 5 else cav_q}")
         
-    if 'coupling_factor' in scaleinfo:
-        beta = scaleinfo['coupling_factor']
-        print(f"coupling_factor type: {type(beta)}, length: {len(beta) if hasattr(beta, '__len__') else 'scalar'}")
-        print(f"coupling_factor first few values: {beta[:5] if len(beta) > 5 else beta}")
+    # if 'coupling_factor' in scaleinfo:
+    #     beta = scaleinfo['coupling_factor']
+    #     print(f"coupling_factor type: {type(beta)}, length: {len(beta) if hasattr(beta, '__len__') else 'scalar'}")
+    #     print(f"coupling_factor first few values: {beta[:5] if len(beta) > 5 else beta}")
 
     # # Check if spectrum info was loaded
     # if "spectrum_info" in results:
