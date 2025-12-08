@@ -134,6 +134,15 @@ class ParameterLoadingStage(PipelineStage):
         for field_name in par_struct.dtype.names:
             try:
                 field_data = par_struct[field_name][0, 0]
+
+                # Debug specific fields
+                if field_name in ['Cavity_freq_GHz_tx', 'Cavity_freq_GHz_tx2', 
+                                'Cavity_freq_GHz_rfl', 'Cavity_freq_GHz_rfl2']:
+                    print(f"      Loading {field_name}: {field_data}")
+                    if hasattr(field_data, '__len__'):
+                        print(f"        Array length: {len(field_data)}")
+                    else:
+                        print(f"        Scalar value: {field_data}")
                 
                 # Always convert to list for consistency
                 if hasattr(field_data, '__len__'):
