@@ -2,22 +2,8 @@
 Scaleinfo merge stage for the analysis pipeline.
 
 This stage:
-  * Starts from par-based scaleinfo (ParameterLoadingStage)
-  * Merges in TX/RFL fit updates
-  * Optionally applies the freqs_from_par override
-
-It is the Python equivalent of the block in AxionAutoRunMain.m that runs
-AFTER ReadOutCavityTran and readoutbeta:
-
-    if option.freqs_from_par
-        scaleinfo.txparams(:,2)  = (Cavity_freq_tx2 + Cavity_freq_tx1)/2;
-        scaleinfo.rflparams(:,2) = (Cavity_freq_rfl2 + Cavity_freq_rfl1)/2;
-        scaleinfo.freq_beta(:,1) = (Cavity_freq_rfl2 + Cavity_freq_rfl1)/2;
-
-        scaleinfo.rfldriftkHz    = abs(Cavity_freq_rfl1 - Cavity_freq_rfl2)*1e6;
-        scaleinfo.txdriftkHz_fit = scaleinfo.txdriftkHz;
-        scaleinfo.txdriftkHz     = abs(Cavity_freq_tx1  - Cavity_freq_tx2 )*1e6;
-    end
+  * Merges in JPA fit updates
+  * Merges in spectrum fit updates
 """
 
 from typing import Any, Dict
@@ -32,7 +18,7 @@ from ..base import PipelineStage, PipelineContext
 # )
 
 
-class ScaleinfoMergeStage(PipelineStage):
+class ScaleinfoMergeStageII(PipelineStage):
     """
     Stage: merge scaleinfo and apply freqs_from_par overrides.
 
@@ -48,7 +34,8 @@ class ScaleinfoMergeStage(PipelineStage):
         tx_res = data.get("transmission_analysis") 
         rfl_res = data.get("reflection_analysis")
         jpa_res = data.get("jpa_analysis")
-        
+        spec_res = data.get("spectrum_info")
+
         # 2) Start with parameter scaleinfo
         if par_res is None or not par_res.scaleinfo:
             raise ValueError("ScaleinfoMergeStage requires parameter_loading.scaleinfo")
@@ -62,8 +49,6 @@ class ScaleinfoMergeStage(PipelineStage):
         if rfl_res is not None and rfl_res.scaleinfo_updates:
             scaleinfo.update(rfl_res.scaleinfo_updates)
         
-        if jpa_res is not None and jpa_res.scaleinfo_updates:
-            scaleinfo.update(jpa_res.scaleinfo_updates)
         
         # 4) Add derived parameters like Cavity_Q, coupling_factor
         scaleinfo = self._add_cavity_parameters(scaleinfo)
@@ -71,6 +56,12 @@ class ScaleinfoMergeStage(PipelineStage):
         # 5) Apply freqs_from_par override if requested
         if getattr(context.options, "freqs_from_par", False):
             scaleinfo = self._apply_freqs_from_par_override(scaleinfo)
+
+        if jpa_res is not None and jpa_res.scaleinfo_updates:
+            scaleinfo.update(jpa_res.scaleinfo_updates)
+
+        if spec_res is not None and spec_res.scaleinfo_updates:
+            scaleinfo.update(spec_res.scaleinfo_updates)
         
         # Store the final, authoritative scaleinfo in the pipeline data
         data["scaleinfo"] = scaleinfo

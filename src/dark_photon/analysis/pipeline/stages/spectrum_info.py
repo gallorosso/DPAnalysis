@@ -238,13 +238,6 @@ class SpectrumInfoStage(PipelineStage):
                 warnings.warn(error_msg)
                 error_files.append((tx2_file.name, str(e)))
                 continue
-
-        # ADD DEBUG SUMMARY
-        print(f"\n    SpectrumInfoStage Summary:")
-        print(f"      Total files: {num_files}")
-        print(f"      Attempted to process: {processed_count}")
-        print(f"      Successfully processed: {successful_count}")
-        print(f"      Failed files: {len(error_files)}")
         
         if error_files:
             print(f"      First 5 errors:")

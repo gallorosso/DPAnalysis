@@ -10,6 +10,7 @@ from .reflection_analysis import ReflectionAnalysisStage
 from .scaleinfo_merge import ScaleinfoMergeStage
 from .jpa_analysis import JPAGainAnalysisStage
 from .spectrum_info import SpectrumInfoStage
+from .scaleinfo_merge_II import ScaleinfoMergeStageII
 
 __all__ = [
     'InitializationStage',
@@ -20,4 +21,5 @@ __all__ = [
     'ScaleinfoMergeStage',
     'JPAGainAnalysisStage',
     'SpectrumInfoStage',
+    'ScaleinfoMergeStageII',
 ]

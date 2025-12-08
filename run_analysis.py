@@ -89,7 +89,7 @@ def main():
         plot_dir = context.plot_dir or (options.output_dir / "plots")
         
         # Retrieve results for plotting
-        param_res = results["parameter_loading"]
+        # param_res = results["parameter_loading"]
         tx_res = results["transmission_analysis"]
         rfl_res = results["reflection_analysis"]
         jpa_res = results["jpa_analysis"]
