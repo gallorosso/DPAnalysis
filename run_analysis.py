@@ -111,9 +111,9 @@ def main():
         # JPA plots
         # plot_jpa_gain_profiles(jpa_res.scaleinfo_updates, scaleinfo, file_enum.files, plot_dir, show=False)
         plot_jpa_summary(jpa_res.scaleinfo_updates, scaleinfo, plot_dir, show=False)
-        # plot_align_norm(scaleinfo, plot_dir)
-        # plot_spectrum_diagnostics(scaleinfo, plot_dir)
-        # plot_squeezing_calibration(scaleinfo, plot_dir)
+        plot_align_norm(scaleinfo, plot_dir)
+        plot_spectrum_diagnostics(scaleinfo, plot_dir)
+        plot_squeezing_calibration(scaleinfo, plot_dir)
 
     
     print("=" * 60)
