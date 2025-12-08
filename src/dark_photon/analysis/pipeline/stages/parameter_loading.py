@@ -36,11 +36,13 @@ class ParameterLoadingStage(PipelineStage):
             # Find all parameter files in this directory
             from src.dark_photon.io.helpers import find_files_by_pattern
             par_files = find_files_by_pattern(dataset_dir, 'par')
+            print(f"      Found {len(par_files)} parameter files")
             
             for par_file_base in par_files:
                 try:
                     # Reconstruct the full par filename
                     par_filename = Path(f"{par_file_base}par.mat")
+                    print(f"      Processing: {par_filename.name}")
                     
                     # Load parameter file
                     par_data = scipy.io.loadmat(str(par_filename))
@@ -55,8 +57,10 @@ class ParameterLoadingStage(PipelineStage):
                     
                     # Process this parameter file
                     if not scaleinfo:  # First file - initialize scaleinfo
+                        print(f"      Initializing scaleinfo from first file")
                         scaleinfo = self._initialize_scaleinfo(par_struct)
                     else:  # Append to existing scaleinfo
+                        print(f"      Appending to scaleinfo")
                         scaleinfo = self._append_to_scaleinfo(scaleinfo, par_struct)
                         
                     print(f"      Loaded parameters from: {par_filename.name}")
@@ -100,24 +104,34 @@ class ParameterLoadingStage(PipelineStage):
     
     def _initialize_scaleinfo(self, par_struct) -> Dict[str, Any]:
         """
-        Initialize scaleinfo structure from first parameter file.
+        Initialize scaleinfo structure from parameter file.
+        
+        par_struct is a structured array of shape (1, 42) where
+        each field contains an array of 42 values (one per data file).
         """
         scaleinfo = {}
         
         if hasattr(par_struct, 'dtype') and par_struct.dtype.names:
+            print(f"    Parameter struct shape: {par_struct.shape}")
+            print(f"    Parameter struct fields: {par_struct.dtype.names}")
+            
             for field_name in par_struct.dtype.names:
                 try:
-                    # Extract the field data (MATLAB uses 2D arrays)
-                    field_data = par_struct[field_name][0, 0]
+                    # Extract the field data - it's already an array of length 42
+                    # par_struct[field_name] gives array of shape (1, 42)
+                    field_data = par_struct[field_name]
                     
-                    # Always convert to list for consistency
-                    if hasattr(field_data, '__len__'):
-                        # Array -> flatten and convert to list
-                        scaleinfo[field_name] = field_data.flatten().tolist()
-                    else:
-                        # Scalar -> put in list
-                        scaleinfo[field_name] = [field_data]
-                        
+                    print(f"      Field '{field_name}': shape={field_data.shape}, type={field_data.dtype}")
+                    
+                    # Squeeze to remove the (1, ) dimension, get array of length 42
+                    # field_data shape is (1, 42) -> squeeze to (42,)
+                    squeezed_data = np.squeeze(field_data)
+                    
+                    # Convert to list for storage
+                    scaleinfo[field_name] = squeezed_data.tolist()
+                    
+                    print(f"        Stored as list of length: {len(scaleinfo[field_name])}")
+                    
                 except Exception as e:
                     warnings.warn(f"Could not initialize field '{field_name}': {e}")
                     scaleinfo[field_name] = []
@@ -127,37 +141,29 @@ class ParameterLoadingStage(PipelineStage):
     def _append_to_scaleinfo(self, scaleinfo: Dict[str, Any], par_struct) -> Dict[str, Any]:
         """
         Append new parameter data to existing scaleinfo.
+        
+        For your case, you only have one parameter file, so this might not be called.
+        But implement it for completeness.
         """
         if not hasattr(par_struct, 'dtype') or not par_struct.dtype.names:
             return scaleinfo
         
+        print(f"    Appending parameter data, struct shape: {par_struct.shape}")
+        
         for field_name in par_struct.dtype.names:
             try:
-                field_data = par_struct[field_name][0, 0]
-
-                # Debug specific fields
-                if field_name in ['Cavity_freq_GHz_tx', 'Cavity_freq_GHz_tx2', 
-                                'Cavity_freq_GHz_rfl', 'Cavity_freq_GHz_rfl2']:
-                    print(f"      Loading {field_name}: {field_data}")
-                    if hasattr(field_data, '__len__'):
-                        print(f"        Array length: {len(field_data)}")
-                    else:
-                        print(f"        Scalar value: {field_data}")
+                # Extract field data
+                field_data = par_struct[field_name]
+                squeezed_data = np.squeeze(field_data)
+                new_data = squeezed_data.tolist()
                 
-                # Always convert to list for consistency
-                if hasattr(field_data, '__len__'):
-                    new_data = field_data.flatten().tolist()
-                else:
-                    new_data = [field_data]
+                print(f"      Field '{field_name}': adding {len(new_data)} values")
                 
                 # Append to existing field or initialize if missing
                 if field_name in scaleinfo:
                     scaleinfo[field_name].extend(new_data)
                 else:
-                    # Field doesn't exist - initialize with zeros then set new data
-                    existing_length = len(scaleinfo[list(scaleinfo.keys())[0]])
-                    scaleinfo[field_name] = [0] * existing_length
-                    scaleinfo[field_name][-len(new_data):] = new_data
+                    scaleinfo[field_name] = new_data
                     
             except Exception as e:
                 warnings.warn(f"Could not append field '{field_name}': {e}")
@@ -222,29 +228,15 @@ class ParameterLoadingStage(PipelineStage):
         if not scaleinfo:
             return 0
 
-        # Prefer fields that we know should be per-spectrum vectors
-        preferred_keys = [
-            'loop_time',
-            'Cavity_freq_GHz_tx',
-            'Cavity_freq_GHz_tx2',
-            'Cavity_freq_GHz_rfl',
-            'Cavity_freq_GHz_rfl2',
-            'Cavity_freq',  # after post-processing
-        ]
-
-        for key in preferred_keys:
+        # Check any field that should have per-file values
+        for key in ['Cavity_freq_GHz_tx', 'Cavity_Q', 'loop_time']:
             if key in scaleinfo:
                 field = scaleinfo[key]
                 if hasattr(field, '__len__'):
+                    print(f"    Using {key} for parameter count: {len(field)}")
                     return len(field)
 
-        # Fallback: use the first list-like field
-        for field in scaleinfo.values():
-            if hasattr(field, '__len__'):
-                return len(field)
-
-        # Last resort: everything looks scalar
-        return 1
+        return 0
 
     
     def validate_output(self, data: Dict[str, Any]) -> bool:

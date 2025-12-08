@@ -82,7 +82,7 @@ def main():
     #         print(f"Valid pr_height values: {valid}/{len(pr_heights)}")
     #     else:
             # print("WARNING: 'pr_height' not found in spectrum results")
-    
+
     # 2. Only generate plots if requested
     if options.plottrue:
         print("  Generating cavity summary plots.")
