@@ -101,6 +101,7 @@ def create_preprocessing_pipeline(avg_type: str = 'average') -> AnalysisPipeline
         ScaleinfoMergeStage,
         JPAGainAnalysisStage,
         SpectrumInfoStage,
+        ScaleinfoMergeStageII,
     )
     
     pipeline.add_stage(InitializationStage())
@@ -111,5 +112,6 @@ def create_preprocessing_pipeline(avg_type: str = 'average') -> AnalysisPipeline
     pipeline.add_stage(ScaleinfoMergeStage())
     pipeline.add_stage(JPAGainAnalysisStage())
     pipeline.add_stage(SpectrumInfoStage())
+    pipeline.add_stage(ScaleinfoMergeStageII())
     
     return pipeline

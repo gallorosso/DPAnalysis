@@ -344,8 +344,8 @@ class SpectrumInfoStage(PipelineStage):
         file_base = self._get_file_base(tx2_file)
     
         # Debug output
-        print(f"      DEBUG: TX2 file: {tx2_file.name}")
-        print(f"      DEBUG: File base: {file_base}")
+        # print(f"      DEBUG: TX2 file: {tx2_file.name}")
+        # print(f"      DEBUG: File base: {file_base}")
         
         # Derive PSA filename by appending 'psa.mat'
         psa_file = file_base.with_name(file_base.name + "psa.mat")
