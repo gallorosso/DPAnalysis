@@ -81,20 +81,12 @@ class ScaleinfoMergeStage(PipelineStage):
         Implement the MATLAB freqs_from_par override logic on a scaleinfo dict.
         """
         print("    Applying freqs_from_par overrides using par-file frequencies.")
-    
-        # Debug: Check what we're working with
-        print(f"      cav_tx1 type: {type(scaleinfo.get('Cavity_freq_tx1'))}")
-        if hasattr(scaleinfo.get('Cavity_freq_tx1'), '__len__'):
-            print(f"      cav_tx1 length: {len(scaleinfo.get('Cavity_freq_tx1'))}")
 
         # Convert lists to numpy arrays for numerical operations
         cav_tx1 = np.asarray(scaleinfo["Cavity_freq_tx1"], dtype=float)
         cav_tx2 = np.asarray(scaleinfo["Cavity_freq_tx2"], dtype=float)
         cav_rfl1 = np.asarray(scaleinfo["Cavity_freq_rfl1"], dtype=float)
         cav_rfl2 = np.asarray(scaleinfo["Cavity_freq_rfl2"], dtype=float)
-
-        print(f"      cav_tx1 array shape: {cav_tx1.shape}")
-        print(f"      cav_tx2 array shape: {cav_tx2.shape}")
 
         txparams = np.asarray(scaleinfo["txparams"], dtype=float)    # (N, 5)
         rflparams = np.asarray(scaleinfo["rflparams"], dtype=float)  # (N, 5)

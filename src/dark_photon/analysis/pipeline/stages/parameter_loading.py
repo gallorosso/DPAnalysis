@@ -110,28 +110,46 @@ class ParameterLoadingStage(PipelineStage):
         
         if hasattr(par_struct, 'dtype') and par_struct.dtype.names:
             # Test one field to see its structure
-            test_field = 'Cavity_freq_GHz_tx'
-            if test_field in par_struct.dtype.names:
-                test_data = par_struct[test_field]
-                print(f"    TEST: {test_field} raw data:")
-                print(f"      type: {type(test_data)}")
-                print(f"      shape: {test_data.shape}")
-                print(f"      dtype: {test_data.dtype}")
-                print(f"      First element type: {type(test_data[0, 0])}")
-                print(f"      First element: {test_data[0, 0]}")
+            # test_field = 'Cavity_freq_GHz_tx'
+            # if test_field in par_struct.dtype.names:
+            #     test_data = par_struct[test_field]
+            #     print(f"    TEST: {test_field} raw data:")
+            #     print(f"      type: {type(test_data)}")
+            #     print(f"      shape: {test_data.shape}")
+            #     print(f"      dtype: {test_data.dtype}")
+            #     if test_data.shape[0] == 1 and test_data.dtype == object:
+            #         print(f"      First element type: {type(test_data[0, 0])}")
+            #         print(f"      First element: {test_data[0, 0]}")
+            #         print(f"      Full extraction test: {test_data[0, :]}")
+            
             for field_name in par_struct.dtype.names:
                 try:
-                    # Extract the field data (MATLAB uses 2D arrays)
-                    field_data = par_struct[field_name][0, 0]
+                    # Extract the field data
+                    field_data = par_struct[field_name]
                     
-                    # Always convert to list for consistency
-                    if hasattr(field_data, '__len__'):
-                        # Array -> flatten and convert to list
-                        scaleinfo[field_name] = field_data.flatten().tolist()
+                    # Handle object arrays (like (1, 42) arrays of arrays)
+                    if field_data.dtype == object and field_data.shape[0] == 1:
+                        # Extract all elements from the row
+                        extracted_values = []
+                        for i in range(field_data.shape[1]):
+                            element = field_data[0, i]
+                            if hasattr(element, '__len__'):
+                                # Element is an array, take its first value
+                                if len(element) > 0:
+                                    extracted_values.append(element[0, 0] if element.ndim == 2 else element[0])
+                                else:
+                                    extracted_values.append(0.0)  # Default if empty
+                            else:
+                                # Element is scalar
+                                extracted_values.append(element)
+                        scaleinfo[field_name] = extracted_values
                     else:
-                        # Scalar -> put in list
-                        scaleinfo[field_name] = [field_data]
-                        
+                        # Regular array, flatten and convert to list
+                        if hasattr(field_data, '__len__'):
+                            scaleinfo[field_name] = field_data.flatten().tolist()
+                        else:
+                            scaleinfo[field_name] = [field_data]
+                            
                 except Exception as e:
                     warnings.warn(f"Could not initialize field '{field_name}': {e}")
                     scaleinfo[field_name] = []
@@ -147,22 +165,37 @@ class ParameterLoadingStage(PipelineStage):
         
         for field_name in par_struct.dtype.names:
             try:
-                field_data = par_struct[field_name][0, 0]
-
+                field_data = par_struct[field_name]
+                
                 # Debug specific fields
                 if field_name in ['Cavity_freq_GHz_tx', 'Cavity_freq_GHz_tx2', 
                                 'Cavity_freq_GHz_rfl', 'Cavity_freq_GHz_rfl2']:
-                    print(f"      Loading {field_name}: {field_data}")
-                    if hasattr(field_data, '__len__'):
-                        print(f"        Array length: {len(field_data)}")
-                    else:
-                        print(f"        Scalar value: {field_data}")
+                    print(f"      Loading {field_name}: shape={field_data.shape}, dtype={field_data.dtype}")
                 
-                # Always convert to list for consistency
-                if hasattr(field_data, '__len__'):
-                    new_data = field_data.flatten().tolist()
+                # Handle object arrays (like (1, 42) arrays of arrays)
+                if field_data.dtype == object and field_data.shape[0] == 1:
+                    # Extract all elements from the row
+                    new_data = []
+                    for i in range(field_data.shape[1]):
+                        element = field_data[0, i]
+                        if hasattr(element, '__len__'):
+                            # Element is an array, take its first value
+                            if len(element) > 0:
+                                if element.ndim == 2:
+                                    new_data.append(element[0, 0])
+                                else:
+                                    new_data.append(element[0])
+                            else:
+                                new_data.append(0.0)  # Default if empty
+                        else:
+                            # Element is scalar
+                            new_data.append(element)
                 else:
-                    new_data = [field_data]
+                    # Regular array
+                    if hasattr(field_data, '__len__'):
+                        new_data = field_data.flatten().tolist()
+                    else:
+                        new_data = [field_data]
                 
                 # Append to existing field or initialize if missing
                 if field_name in scaleinfo:
@@ -171,7 +204,7 @@ class ParameterLoadingStage(PipelineStage):
                     # Field doesn't exist - initialize with zeros then set new data
                     existing_length = len(scaleinfo[list(scaleinfo.keys())[0]])
                     scaleinfo[field_name] = [0] * existing_length
-                    scaleinfo[field_name][-len(new_data):] = new_data
+                    scaleinfo[field_name].extend(new_data)
                     
             except Exception as e:
                 warnings.warn(f"Could not append field '{field_name}': {e}")
