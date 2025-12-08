@@ -52,8 +52,17 @@ def plot_tx_summary(
     # Center frequency (f0) is 2nd column (index 1)
     f0_avg = paramsavg[:, 1]
 
-    # Drift in kHz already computed and stored in scaleinfo
+    # # Drift in kHz already computed and stored in scaleinfo
     freq_drift_khz = np.asarray(scaleinfo["txdriftkHz"])
+    # # Calculate frequency drift from the first measurement
+    # freq_drift_ghz = params1[:, 1] - params1[0, 1]
+    # freq_drift_khz = freq_drift_ghz * 1000.0
+
+    # Add this debug block:
+    print(f"DEBUG: params1[:, 1] shape: {params1[:, 1].shape}")
+    print(f"DEBUG: freq_drift_khz shape: {freq_drift_khz.shape}")
+    print(f"DEBUG: freq_drift_khz content: {freq_drift_khz}")
+    # End debug block
 
     # TX peak amplitude (1st column)
     tx1_peak = params1[:, 0]
